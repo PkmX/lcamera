@@ -1,0 +1,5 @@
+bin/
+gen/
+.idea
+.idea_modules
+target/
