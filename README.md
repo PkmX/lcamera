@@ -20,9 +20,9 @@ You can either install the pre-built debug APK (`lcamera-debug.apk`) found in th
 
 ## Usage
 
-Use it like any camera. Tapping anywhere on the preview screen to focus on a specific point (if auto focus is on), and this will also trigger the white balance/exposure metering sequence if auto exposure setting is on. Clicking the floating action button will bring up auto focus and auto exposure settings (and more to come, hopefully), which can be turned on and off. Turning off the auto focus will allow you to control the focus distance manually. You can also disable auto exposure and manually set the exposure time and ISO.
+Use it like any camera. Tap anywhere on the preview screen to focus on a specific point (if auto focus is on), and this will also trigger the white balance/exposure metering sequence if auto exposure setting is on. Clicking the floating action button will bring up auto focus and auto exposure options (and more options to come, hopefully). Turning off the auto focus will allow you to control the focus distance manually. You can also disable auto exposure and manually set the desired shutter speed and ISO.
 
-While capturing, both DNG and JPEG files will be saved in `/sdcard/DCIM/Camera/` directory. Note that each DNG image is 15.36 MiB in size, so make sure you have plenty of free space available!
+After capturing, both DNG and JPEG files will be saved in `/sdcard/DCIM/Camera/` directory. Note that each DNG image is 15.36 MiB in size, so make sure you have plenty of free space available!
 
 ### What to do with DNG files
 
