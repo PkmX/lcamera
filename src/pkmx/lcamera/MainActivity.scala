@@ -496,7 +496,9 @@ class MainActivity extends SActivity {
 
               val saveDngTask = Future {
                 val image = rawImage.take(10000)
-                new DngCreator(characteristics, result).writeImage(new FileOutputStream(dngFilePath), image)
+                val dngCreator = new DngCreator(characteristics, result).setOrientation(windowManager.getDefaultDisplay.getRotation)
+                dngCreator.writeImage(new FileOutputStream(dngFilePath), image)
+                dngCreator.close()
                 image.close()
                 MediaScannerConnection.scanFile(MainActivity.this, Array[String](dngFilePath), null, null)
                 debug("DNG saved")
