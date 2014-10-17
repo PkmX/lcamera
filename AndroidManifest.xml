@@ -3,8 +3,8 @@
           package="pkmx.lcamera"
           android:versionCode="1"
           android:versionName="1.0">
-    <uses-sdk android:minSdkVersion="L"
-              android:targetSdkVersion="L" />
+    <uses-sdk android:minSdkVersion="21"
+              android:targetSdkVersion="21" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 
