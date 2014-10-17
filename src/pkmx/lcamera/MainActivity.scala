@@ -469,7 +469,13 @@ class MainActivity extends SActivity {
       request.set(SENSOR_EXPOSURE_TIME, if (autoExposure()) autoExposureTime() else exposureTime())
 
       request.set(JPEG_QUALITY, 95.toByte)
-      debug(windowManager.getDefaultDisplay.getRotation.toString)
+      request.set(JPEG_ORIENTATION, windowManager.getDefaultDisplay.getRotation match {
+        case Surface.ROTATION_0 => 90
+        case Surface.ROTATION_90 => 0
+        case Surface.ROTATION_180 => 270
+        case Surface.ROTATION_270 => 180
+        case _ => 0
+      })
       request.set(STATISTICS_LENS_SHADING_MAP_MODE, STATISTICS_LENS_SHADING_MAP_MODE_ON) // Required for RAW capture
 
       request.addTarget(jpegSurface)
