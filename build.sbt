@@ -12,12 +12,13 @@ resolvers += "Akka Snapshot Repository" at "http://repo.akka.io/snapshots/"
 libraryDependencies ++= Seq(
   "org.scaloid" %% "scaloid" % "3.5-10",
   "com.scalarx" %% "scalarx" % "0.2.6",
-  "com.typesafe.akka" %% "akka-actor" % "2.3.6",
-  aar("com.android.support" % "support-v4" % "20.0.0"),
-  aar("com.melnykov" % "floatingactionbutton" % "1.0.4")
+  "com.typesafe.akka" %% "akka-actor" % "2.3.6"
+  // "com.melnykov" % "floatingactionbutton" % "1.0.4"
 )
 
-platformTarget in Android := "android-L"
+localAars in Android := Seq(new File("floatingactionbutton-1.0.4.aar"))
+
+platformTarget in Android := "android-21"
 
 proguardCache in Android ++=
   Seq ( ProguardCache("org.scaloid") % "org.scaloid" %% "scaloid"

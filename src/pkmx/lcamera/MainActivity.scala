@@ -352,7 +352,7 @@ class MainActivity extends SActivity {
       }
       request.addTarget(previewSurface)
 
-      previewSession.setRepeatingRequest(request.build(), new CameraCaptureSession.CaptureListener {
+      previewSession.setRepeatingRequest(request.build(), new CameraCaptureSession.CaptureCallback {
         override def onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) = {
           if (Vector(CONTROL_AF_STATE_FOCUSED_LOCKED, CONTROL_AF_STATE_NOT_FOCUSED_LOCKED).contains(result.get(CaptureResult.CONTROL_AF_STATE)))
             MainActivity.this.focusDistance() = result.get(CaptureResult.LENS_FOCUS_DISTANCE)
@@ -372,7 +372,7 @@ class MainActivity extends SActivity {
           previewSurface <- previewSurfaceOpt
         } {
       debug(s"Creating preview session using $camera")
-      camera.createCaptureSession(List(previewSurface), new CameraCaptureSession.StateListener {
+      camera.createCaptureSession(List(previewSurface), new CameraCaptureSession.StateCallback {
         override def onConfigured(session: CameraCaptureSession) {
           debug(s"Preview session configured: ${session.toString}")
           previewSession() = Option(session)
@@ -473,10 +473,10 @@ class MainActivity extends SActivity {
 
       previewSession() = None
       debug("Creating capture session")
-      camera.createCaptureSession(List(jpegSurface, rawSurface), new CameraCaptureSession.StateListener {
+      camera.createCaptureSession(List(jpegSurface, rawSurface), new CameraCaptureSession.StateCallback {
         override def onConfigured(session: CameraCaptureSession) {
           debug(s"Capture session configured: $session")
-          session.capture(request.build(), new CameraCaptureSession.CaptureListener {
+          session.capture(request.build(), new CameraCaptureSession.CaptureCallback {
             override def onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
               debug(s"Capture completed: " +
                     s"focus = ${result.get(CaptureResult.LENS_FOCUS_DISTANCE)}/${request.get(LENS_FOCUS_DISTANCE)} " +
@@ -569,7 +569,7 @@ class MainActivity extends SActivity {
   override def onResume() {
     super.onResume()
 
-    val listener = new CameraDevice.StateListener {
+    val listener = new CameraDevice.StateCallback {
       override def onOpened(device: CameraDevice) {
         debug(s"Camera opened: $device")
         camera() = Option(device)
