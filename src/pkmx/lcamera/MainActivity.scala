@@ -32,15 +32,11 @@ import rx.ops._
 
 object Utils {
   implicit class RichSyncVar[A](sv: SyncVar[A]) {
-    def empty() = sv.synchronized { if (sv.isSet) { sv.take() } }
+    def update(a: Option[A]) = sv.synchronized {
+      if (sv.isSet) { sv.take() }
 
-    def setAs(a: A) = sv.synchronized { sv.empty(); sv.put(a) }
-
-    def tryTake() = sv.synchronized { if (sv.isSet) Some(sv.take()) else None }
-
-    def tryGet() = sv.synchronized { if (sv.isSet) Some(sv.get) else None }
-
-    def tryPut(a: A) = sv.synchronized { if (!sv.isSet) { sv.put(a); true } else false }
+      a foreach { sv.put }
+    }
   }
 
   implicit val execCtx = ExecutionContext.fromExecutor(AsyncTask.THREAD_POOL_EXECUTOR)
@@ -80,12 +76,8 @@ object Utils {
       Animation.RELATIVE_TO_SELF, 1) {
       setDuration(300)
       setAnimationListener(new AnimationListener {
-        override def onAnimationEnd(anim: Animation) {
-          v.visibility = View.INVISIBLE
-        }
-
+        override def onAnimationEnd(anim: Animation) { v.visibility = View.INVISIBLE }
         override def onAnimationStart(anim: Animation) {}
-
         override def onAnimationRepeat(anim: Animation) {}
       })
     })
@@ -379,8 +371,6 @@ class MainActivity extends SActivity {
           camera <- cameraOpt
           previewSurface <- previewSurfaceOpt
         } {
-      previewSession() = None
-
       debug(s"Creating preview session using $camera")
       camera.createCaptureSession(List(previewSurface), new CameraCaptureSession.StateListener {
         override def onConfigured(session: CameraCaptureSession) {
@@ -493,8 +483,8 @@ class MainActivity extends SActivity {
                     s"iso = ${result.get(CaptureResult.SENSOR_SENSITIVITY)}/${request.get(SENSOR_SENSITIVITY)} " +
                     s"exposure = ${result.get(CaptureResult.SENSOR_EXPOSURE_TIME)}/${request.get(SENSOR_EXPOSURE_TIME)}")
 
-              Future {
-                val image = jpegImage.take()
+              val saveJpegTask = Future {
+                val image = jpegImage.take(10000)
                 val jpegBuffer = image.getPlanes()(0).getBuffer
                 val bytes = new Array[Byte](jpegBuffer.capacity)
                 jpegBuffer.get(bytes)
@@ -502,17 +492,21 @@ class MainActivity extends SActivity {
                 new FileOutputStream(jpgFilePath).write(bytes)
                 MediaScannerConnection.scanFile(MainActivity.this, Array[String](jpgFilePath), null, null)
                 debug("JPEG saved")
-              } onFailure { case NonFatal(e) => e.printStackTrace() }
+              }
 
-              Future {
-                val image = rawImage.take()
+              val saveDngTask = Future {
+                val image = rawImage.take(10000)
                 new DngCreator(characteristics, result).writeImage(new FileOutputStream(dngFilePath), image)
                 image.close()
                 MediaScannerConnection.scanFile(MainActivity.this, Array[String](dngFilePath), null, null)
                 debug("DNG saved")
-              } onFailure { case NonFatal(e) => e.printStackTrace() }
+              }
 
-              MainActivity.this.capturing() = false
+              val saveTask = for { _ <- saveJpegTask ; _ <- saveDngTask } yield ()
+
+              List(saveJpegTask, saveDngTask) foreach { _ onFailure { case NonFatal(e) => e.printStackTrace() } }
+              saveTask onComplete { _ => runOnUiThread { MainActivity.this.capturing() = false } }
+
               createPreview.trigger()
             }
 
@@ -555,11 +549,11 @@ class MainActivity extends SActivity {
     }
 
     jpegImageReader.setOnImageAvailableListener(new OnImageAvailableListener {
-      override def onImageAvailable(reader: ImageReader) = jpegImage.setAs(reader.acquireNextImage())
+      override def onImageAvailable(reader: ImageReader) = jpegImage() = Option(reader.acquireNextImage())
     }, null)
 
     rawImageReader.setOnImageAvailableListener(new OnImageAvailableListener {
-      override def onImageAvailable(reader: ImageReader) = rawImage.setAs(reader.acquireNextImage())
+      override def onImageAvailable(reader: ImageReader) = rawImage() = Option(reader.acquireNextImage())
     }, null)
 
     val prefs = new Preferences(getSharedPreferences("lcamera", Context.MODE_PRIVATE))
