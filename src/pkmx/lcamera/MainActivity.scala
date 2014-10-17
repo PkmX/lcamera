@@ -153,18 +153,7 @@ class MainActivity extends SActivity {
         debug(s"Surface texture available: $texture")
         previewSurface() = Option(new Surface(texture))
 
-        setTransform {
-          val rotation = getWindowManager.getDefaultDisplay.getRotation
-          val viewRect = new RectF(0, 0, width, height)
-          val bufferRect = new RectF(0, 0, textureSize.getHeight, textureSize.getWidth)
-          bufferRect.offset(viewRect.centerX - bufferRect.centerX, viewRect.centerY - bufferRect.centerY)
-          val matrix = new Matrix()
-          matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.FILL)
-          val scale = Math.max(width.toFloat / textureSize.getWidth, height.toFloat / textureSize.getHeight)
-          matrix.postScale(scale, scale, viewRect.centerX, viewRect.centerY)
-          matrix.postRotate((rotation + 2) * 90, viewRect.centerX, viewRect.centerY)
-          matrix
-        }
+        setPreviewTransform(windowManager.getDefaultDisplay.getRotation)
       }
 
       override def onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) = onSurfaceTextureAvailable _
@@ -175,6 +164,23 @@ class MainActivity extends SActivity {
         true
       }
     })
+  }
+
+  val setPreviewTransform: Int => Unit = (rotation) => {
+    if (textureView.isAvailable) {
+      textureView.setTransform {
+        val textureSize = streamConfigurationMap.getOutputSizes(textureView.getSurfaceTexture.getClass)(0)
+        val viewRect = new RectF(0, 0, textureView.width, textureView.height)
+        val bufferRect = new RectF(0, 0, textureSize.getHeight, textureSize.getWidth)
+        bufferRect.offset(viewRect.centerX - bufferRect.centerX, viewRect.centerY - bufferRect.centerY)
+        val matrix = new Matrix()
+        matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.FILL)
+        val scale = Math.max(textureView.width.toFloat / textureSize.getWidth, textureView.height.toFloat / textureSize.getHeight)
+        matrix.postScale(scale, scale, viewRect.centerX, viewRect.centerY)
+        matrix.postRotate((rotation + 2) * 90, viewRect.centerX, viewRect.centerY)
+        matrix
+      }
+    }
   }
 
   lazy val captureButton = new SImageButton {
@@ -463,6 +469,7 @@ class MainActivity extends SActivity {
       request.set(SENSOR_EXPOSURE_TIME, if (autoExposure()) autoExposureTime() else exposureTime())
 
       request.set(JPEG_QUALITY, 95.toByte)
+      debug(windowManager.getDefaultDisplay.getRotation.toString)
       request.set(STATISTICS_LENS_SHADING_MAP_MODE, STATISTICS_LENS_SHADING_MAP_MODE_ON) // Required for RAW capture
 
       request.addTarget(jpegSurface)
@@ -517,6 +524,17 @@ class MainActivity extends SActivity {
       }, null)
     }
 
+  lazy val orientationEventListener = new OrientationEventListener(this) {
+    var lastOrientation = windowManager.getDefaultDisplay.getRotation
+    override def onOrientationChanged(ignored: Int) = {
+      val orientation = windowManager.getDefaultDisplay.getRotation
+      if (orientation != lastOrientation) {
+        lastOrientation = orientation
+        setPreviewTransform(orientation)
+      }
+    }
+  }
+
   override def onCreate(savedInstanceState: Bundle) {
     super.onCreate(savedInstanceState)
 
@@ -545,7 +563,7 @@ class MainActivity extends SActivity {
     prefs.Int.isoIndex.foreach { isoIndex() = _ }
     prefs.Int.exposureTimeIndex.foreach { exposureTimeIndex() = _ }
 
-    debug(exposureTimeIndex().toString)
+    orientationEventListener.enable()
   }
 
   override def onResume() {
