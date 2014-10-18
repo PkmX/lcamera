@@ -8,7 +8,7 @@ import scala.collection.immutable.Vector
 import scala.language.{existentials, implicitConversions}
 import scala.util.control.NonFatal
 
-import android.animation.{AnimatorSet, Animator, AnimatorListenerAdapter}
+import android.animation._
 import android.content.Context
 import android.graphics._
 import android.hardware.camera2._
@@ -77,6 +77,14 @@ object Utils {
   }
 
   def NoneVar[T] = Var[Option[T]](None)
+
+  class STextureView(implicit ctx: Context) extends TextureView(ctx) with TraitView[TextureView] {
+    val basis = this
+  }
+
+  class SSwitch(implicit ctx: Context) extends Switch(ctx) with TraitCompoundButton[Switch] {
+    val basis = this
+  }
 }
 
 import Utils._
@@ -172,10 +180,26 @@ class MainActivity extends SActivity {
   }
 
   lazy val captureButton = new SImageButton {
+    val enableColor = Color.parseColor("#4285f4")
+    val disableColor = Color.parseColor("#d0d0d0")
+    def colorFade(from: Int, to: Int) {
+      val anim = ObjectAnimator.ofArgb(this, "backgroundColor", from, to)
+      anim.addListener(new AnimatorListenerAdapter() {
+        override def onAnimationStart(animator: Animator) { backgroundColor = from }
+        override def onAnimationEnd(animator: Animator) { backgroundColor = to }
+      })
+      anim.setDuration(150)
+      anim.start()
+    }
+
     imageDrawable = R.drawable.ic_camera
-    backgroundColor = Color.parseColor("#4285f4")
+    backgroundColor = enableColor
     scaleType = ScaleType.FIT_CENTER
     onClick { capture() }
+    val obs = capturing.foreach { c =>
+      enabled(!c)
+      if (c) colorFade(enableColor, disableColor) else colorFade (disableColor, enableColor)
+    }
   }
 
   lazy val toolbar = new SLinearLayout {
@@ -185,24 +209,24 @@ class MainActivity extends SActivity {
     enabled = false
 
     += (new STextView {
-      text = "AF"
+      text = "Focus"
       typeface = Typeface.DEFAULT_BOLD
       textSize = 16.sp
       onClick {
         afView.enabled = true
         circularReveal(afView, this.left + this.getWidth / 2, this.top + this.getHeight / 2, afView.width).start()
       }
-    }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
+    }.padding(16.dip, 16.dip, 16.dip, 16.dip).<<.wrap.>>)
 
     += (new STextView {
-      text = "AE"
+      text = "Exposure"
       typeface = Typeface.DEFAULT_BOLD
       textSize = 16.sp
       onClick {
         aeView.enabled = true
         circularReveal(aeView, this.left + this.getWidth / 2, this.top + this.getHeight / 2, aeView.width).start()
       }
-    }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
+    }.padding(16.dip, 16.dip, 16.dip, 16.dip).<<.wrap.>>)
 
     += (new STextView {
       text = "Burst"
@@ -212,7 +236,7 @@ class MainActivity extends SActivity {
         burstView.enabled = true
         circularReveal(burstView, this.left + this.getWidth / 2, this.top + this.getHeight / 2, aeView.width).start()
       }
-    }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
+    }.padding(16.dip, 16.dip, 16.dip, 16.dip).<<.wrap.>>)
   }
 
   lazy val afView = new SLinearLayout {
@@ -222,26 +246,22 @@ class MainActivity extends SActivity {
     enabled = false
 
     += (new STextView {
-      text = "AF"
+      text = "Auto Focus"
       typeface = Typeface.DEFAULT_BOLD
       textSize = 16.sp
     }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
-    += (new Switch(ctx) {
+    += (new SSwitch {
       val obs = autoFocus.foreach(setChecked)
-      setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener {
-        override def onCheckedChanged(v: CompoundButton, checked: Boolean) {
-          autoFocus() = checked
-        }
-      })
+      onCheckedChanged { (v: View, checked: Boolean) => autoFocus() = checked }
     }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
     += (new SSeekBar {
       max = (minFocusDistance * 100).round
       val obs = (autoFocus.foreach(af => enabled = !af),
                  focusDistance.foreach(fd => setProgress((fd * 100).round)))
-      onProgressChanged((seekbar: SeekBar, value: Int, fromUser: Boolean) => {
+      onProgressChanged { (seekbar: SeekBar, value: Int, fromUser: Boolean) => {
         if (fromUser)
           focusDistance() = value.toFloat / 100
-      })
+      }}
     }.padding(8.dip, 8.dip, 8.dip, 8.dip).<<(MATCH_PARENT, WRAP_CONTENT).>>)
   }.padding(16.dip, 0, 16.dip, 0)
 
@@ -252,53 +272,47 @@ class MainActivity extends SActivity {
     enabled = false
 
     += (new STextView {
-      text = "AE"
+      text = "Auto Exposure"
       typeface = Typeface.DEFAULT_BOLD
       textSize = 16.sp
     }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
 
-    += (new Switch(ctx) {
+    += (new SSwitch {
       val obs = autoExposure.foreach(setChecked)
-      setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener {
-        override def onCheckedChanged(v: CompoundButton, checked: Boolean) {
-          autoExposure() = checked
-        }
-      })
+      onCheckedChanged { (v: CompoundButton, checked: Boolean) => autoExposure() = checked }
     }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
 
-    def prevButton(f: => Unit) = new SImageView {
+    sealed trait PrevNext
+    case object Prev extends PrevNext
+    case object Next extends PrevNext
+    def mkButton(pv: PrevNext, f: => Unit) = new SImageView {
       backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
       val obs = autoExposure.foreach { ae =>
         enabled = !ae
-        imageDrawable = if (ae) R.drawable.ic_navigation_previous_item_disabled else R.drawable.ic_navigation_previous_item
+        imageDrawable = (pv, ae) match {
+          case (Prev, false) => R.drawable.ic_navigation_previous_item
+          case (Prev, true) => R.drawable.ic_navigation_previous_item_disabled
+          case (Next, false) => R.drawable.ic_navigation_next_item
+          case (Next, true) => R.drawable.ic_navigation_next_item_disabled
+        }
       }
 
       onClick(f)
     }
 
-    def nextButton(f: => Unit) = new SImageView {
-      backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
-      val obs = autoExposure.foreach { ae =>
-        enabled = !ae
-        imageDrawable = if (ae) R.drawable.ic_navigation_next_item_disabled else R.drawable.ic_navigation_next_item
-      }
-
-      onClick(f)
-    }
-
-    += (prevButton { exposureTimeIndex() = Math.max(exposureTimeIndex() - 1, 0) }.<<(32.dip, 32.dip).>>)
+    += (mkButton(Prev, { exposureTimeIndex() = Math.max(exposureTimeIndex() - 1, 0) }).<<(32.dip, 32.dip).>>)
     += (new STextView {
       val obs = (exposureTimeIndex.foreach(v => text = s"1/${exposureTimeMap(v)}"),
                  autoExposure.foreach(ae => textColor = if (ae) Color.parseColor("#d0d0d0") else Color.parseColor("#000000")))
     }.padding(4.dip, 16.dip, 4.dip, 16.dip).<<.wrap.>>)
-    += (nextButton { exposureTimeIndex() = Math.min(exposureTimeMap.length - 1, exposureTimeIndex() + 1) }.<<(32.dip, 32.dip).>>)
+    += (mkButton(Next, { exposureTimeIndex() = Math.min(exposureTimeMap.length - 1, exposureTimeIndex() + 1) }).<<(32.dip, 32.dip).>>)
 
-    += (prevButton { isoIndex() = Math.max(isoIndex() - 1, 0) }.<<(32.dip, 32.dip).>>)
+    += (mkButton(Prev, { isoIndex() = Math.max(isoIndex() - 1, 0) }).<<(32.dip, 32.dip).>>)
     += (new STextView {
       val obs = (iso.foreach(v => text = s"ISO $v"),
                  autoExposure.foreach(ae => textColor = if (ae) Color.parseColor("#d0d0d0") else Color.parseColor("#000000")))
     }.padding(4.dip, 16.dip, 4.dip, 16.dip).<<.wrap.>>)
-    += (nextButton { isoIndex() = Math.min(isoMap.length - 1, isoIndex() + 1) }.<<(32.dip, 32.dip).>>)
+    += (mkButton(Next, { isoIndex() = Math.min(isoMap.length - 1, isoIndex() + 1) }).<<(32.dip, 32.dip).>>)
   }
 
   lazy val burstView = new SLinearLayout {
@@ -313,13 +327,9 @@ class MainActivity extends SActivity {
       textSize = 16.sp
     }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
 
-    += (new Switch(ctx) {
+    += (new SSwitch {
       val obs = burst.foreach(n => setChecked(n > 1))
-      setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener {
-        override def onCheckedChanged(v: CompoundButton, checked: Boolean) {
-          burst() = if (checked) 7 else 1
-        }
-      })
+      onCheckedChanged { (v: CompoundButton, checked: Boolean) => burst() = if (checked) 7 else 1 }
     }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
 
     += (new SCheckBox {
@@ -511,7 +521,6 @@ class MainActivity extends SActivity {
           request.set(SENSOR_EXPOSURE_TIME, if (autoExposure()) autoExposureTime() else exposureTime())
         }
 
-
         request.set(JPEG_QUALITY, 95.toByte)
         request.set(JPEG_ORIENTATION, orientation match {
           case Surface.ROTATION_0 => 90
@@ -654,6 +663,8 @@ class MainActivity extends SActivity {
         debug(s"Camera error: $device, $error")
         camera() = None
         previewSession() = None
+        longToast(s"Unable to open camera ($error)")
+        MainActivity.this.finish()
       }
 
       override def onDisconnected(device: CameraDevice) {
