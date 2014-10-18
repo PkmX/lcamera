@@ -507,10 +507,13 @@ class MainActivity extends SActivity {
 
         request.set(CONTROL_MODE, CONTROL_MODE_AUTO)
 
-        request.set(CONTROL_AF_MODE, CONTROL_AF_MODE_OFF)
         if (burst() > 1 && focusStacking()) {
+          request.set(CONTROL_AF_MODE, CONTROL_AF_MODE_OFF)
           request.set(LENS_FOCUS_DISTANCE, minFocusDistance * (n.toFloat / (burst() - 1)))
+        } else if (autoFocus()) {
+          request.set(CONTROL_AF_MODE, CONTROL_AF_MODE_AUTO)
         } else {
+          request.set(CONTROL_AF_MODE, CONTROL_AF_MODE_OFF)
           request.set(LENS_FOCUS_DISTANCE, focusDistance())
         }
 
@@ -585,13 +588,13 @@ class MainActivity extends SActivity {
 
           tasks foreach { _ onFailure { case NonFatal(e) => e.printStackTrace() } }
           tasks reduce { (_ : Future[Any]) zip (_ : Future[Any]) } onComplete { _ => runOnUiThread { MainActivity.this.capturing() = false } }
-          createPreview.trigger()
+          startPreview.trigger()
         }
 
         override def onCaptureFailed(session: CameraCaptureSession, request: CaptureRequest, failure: CaptureFailure) {
           debug("Capture failed")
           MainActivity.this.capturing() = false
-          createPreview.trigger()
+          startPreview.trigger()
         }
       }, null)
     }
