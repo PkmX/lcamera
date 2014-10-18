@@ -39,7 +39,7 @@ If you are looking for a stopwatch to test the burst capture feature, check out 
 
 After capturing, both DNG and JPEG files will be saved in `/sdcard/DCIM/Camera/` directory. Note that each DNG image is 15.36 MiB in size, so make sure you have plenty of free space available!
 
-### What to do with DNG files
+### Working with DNG files
 
 Most RAW post-processing programs should be able to open them. While Adobe Lightroom is probably the most popular RAW editor, both [darktable](http://www.darktable.org/) (Linux, Mac) and [RawTherapee](http://rawtherapee.com/) (Windows, Linux, Mac) are both free alternatives that also offer very powerful editing capabilities.
 
@@ -80,6 +80,8 @@ To see debug outputs, set allowed logging priority of `lcamera` tag to `DEBUG`:
 ## Known Issues
 
 * AWB does not work in manual exposure mode. You can workaround the problem by setting the white balance in AE mode and switching back to manual mode.
+* There appears to be image distortion effects at very fast shutter speed.
+* Image distrotion with focus stacking.
 
 Please report any bugs on GitHub's issue tracker.
 
