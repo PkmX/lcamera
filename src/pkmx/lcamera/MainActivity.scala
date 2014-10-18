@@ -449,6 +449,7 @@ class MainActivity extends SActivity {
     for { camera <- this.camera() } {
       debug(s"Starting capture using $camera")
       capturing() = true
+      previewSession() foreach { _.abortCaptures() }
 
       val time = new Time
       time.setToNow()
@@ -494,7 +495,6 @@ class MainActivity extends SActivity {
                     s"focus = ${result.get(CaptureResult.LENS_FOCUS_DISTANCE)}/${request.get(LENS_FOCUS_DISTANCE)} " +
                     s"iso = ${result.get(CaptureResult.SENSOR_SENSITIVITY)}/${request.get(SENSOR_SENSITIVITY)} " +
                     s"exposure = ${result.get(CaptureResult.SENSOR_EXPOSURE_TIME)}/${request.get(SENSOR_EXPOSURE_TIME)}")
-
 
               rawResults.write((if (burst() > 1) s"${filePathBase}_$frameNumber.dng" else s"$filePathBase.dng", result))
               frameNumber += 1
