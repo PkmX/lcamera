@@ -535,7 +535,7 @@ class MainActivity extends SActivity {
           case _ => 0
         })
         request.set(STATISTICS_LENS_SHADING_MAP_MODE, STATISTICS_LENS_SHADING_MAP_MODE_ON) // Required for RAW capture
-        (previewSurface +: targetSurfaces) map { request.addTarget }
+        (if (burst() > 1) targetSurfaces else previewSurface +: targetSurfaces) map { request.addTarget }
         request.build()
       }
 
