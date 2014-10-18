@@ -2,7 +2,8 @@ package pkmx.lcamera
 
 import collection.JavaConversions._
 import java.io.FileOutputStream
-import scala.concurrent.{ExecutionContext, Future, SyncVar}
+import scala.collection.mutable.ListBuffer
+import scala.concurrent.{Channel, ExecutionContext, Future}
 import scala.collection.immutable.Vector
 import scala.language.{existentials, implicitConversions}
 import scala.util.control.NonFatal
@@ -31,14 +32,6 @@ import rx._
 import rx.ops._
 
 object Utils {
-  implicit class RichSyncVar[A](sv: SyncVar[A]) {
-    def update(a: Option[A]) = sv.synchronized {
-      if (sv.isSet) { sv.take() }
-
-      a foreach { sv.put }
-    }
-  }
-
   implicit val execCtx = ExecutionContext.fromExecutor(AsyncTask.THREAD_POOL_EXECUTOR)
 
   implicit def requestKeyCovariant[T <: Any](k: CaptureRequest.Key[T]) = k.asInstanceOf[CaptureRequest.Key[Any]]
@@ -100,18 +93,19 @@ class MainActivity extends SActivity {
 
   lazy val jpegSize = streamConfigurationMap.getOutputSizes(ImageFormat.JPEG)(0)
   lazy val rawSize = streamConfigurationMap.getOutputSizes(ImageFormat.RAW_SENSOR)(0)
-  lazy val jpegImageReader = ImageReader.newInstance(jpegSize.getWidth, jpegSize.getHeight, ImageFormat.JPEG, 4)
-  lazy val rawImageReader = ImageReader.newInstance(rawSize.getWidth, rawSize.getHeight, ImageFormat.RAW_SENSOR, 4)
+  lazy val jpegImageReader = ImageReader.newInstance(jpegSize.getWidth, jpegSize.getHeight, ImageFormat.JPEG, 1)
+  lazy val rawImageReader = ImageReader.newInstance(rawSize.getWidth, rawSize.getHeight, ImageFormat.RAW_SENSOR, 10)
   lazy val jpegSurface = jpegImageReader.getSurface
   lazy val rawSurface = rawImageReader.getSurface
-  val jpegImage = new SyncVar[Image]
-  val rawImage = new SyncVar[Image]
+  val jpegImages = new Channel[Image]
+  val rawImages = new Channel[Image]
 
   val camera = NoneVar[CameraDevice]
   val previewSurface = NoneVar[Surface]
   val previewSession = NoneVar[CameraCaptureSession]
   val meteringRectangle = NoneVar[MeteringRectangle]
   val capturing = Var(false)
+  val burst = Var(8)
 
   val autoFocus = Var(true)
   val focusDistance = Var(0f)
@@ -206,6 +200,21 @@ class MainActivity extends SActivity {
         aeView.enabled = true
         circularReveal(aeView, this.left + this.getWidth / 2, this.top + this.getHeight / 2, aeView.width).start()
       }
+    }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
+
+    += (new STextView {
+      text = "Burst"
+      typeface = Typeface.DEFAULT_BOLD
+      textSize = 16.sp
+    }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
+
+    += (new Switch(ctx) {
+      val obs = burst.foreach(n => setChecked(n > 1))
+      setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener {
+        override def onCheckedChanged(v: CompoundButton, checked: Boolean) {
+          burst() = if (checked) 8 else 1
+        }
+      })
     }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
   }
 
@@ -444,8 +453,7 @@ class MainActivity extends SActivity {
       val time = new Time
       time.setToNow()
       val filePathBase = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + time.format("/Camera/IMG_%Y%m%d_%H%M%S")
-      val jpgFilePath = filePathBase + ".jpg"
-      val dngFilePath = filePathBase + ".dng"
+      val orientation = windowManager.getDefaultDisplay.getRotation
 
       val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
 
@@ -459,7 +467,7 @@ class MainActivity extends SActivity {
       request.set(SENSOR_EXPOSURE_TIME, if (autoExposure()) autoExposureTime() else exposureTime())
 
       request.set(JPEG_QUALITY, 95.toByte)
-      request.set(JPEG_ORIENTATION, windowManager.getDefaultDisplay.getRotation match {
+      request.set(JPEG_ORIENTATION, orientation match {
         case Surface.ROTATION_0 => 90
         case Surface.ROTATION_90 => 0
         case Surface.ROTATION_180 => 270
@@ -468,47 +476,61 @@ class MainActivity extends SActivity {
       })
       request.set(STATISTICS_LENS_SHADING_MAP_MODE, STATISTICS_LENS_SHADING_MAP_MODE_ON) // Required for RAW capture
 
-      request.addTarget(jpegSurface)
-      request.addTarget(rawSurface)
+      val targetSurfaces = if (burst() > 1) List(rawSurface) else List(jpegSurface, rawSurface)
+      targetSurfaces map { request.addTarget }
 
       previewSession() = None
-      debug("Creating capture session")
-      camera.createCaptureSession(List(jpegSurface, rawSurface), new CameraCaptureSession.StateCallback {
+      debug(s"Creating capture session with $targetSurfaces")
+      camera.createCaptureSession(targetSurfaces, new CameraCaptureSession.StateCallback {
         override def onConfigured(session: CameraCaptureSession) {
           debug(s"Capture session configured: $session")
-          session.capture(request.build(), new CameraCaptureSession.CaptureCallback {
+          val tasks = new ListBuffer[Future[Unit]]
+          var frameNumber = 0
+          val rawResults = new Channel[(String, TotalCaptureResult)]
+
+          session.captureBurst(List.fill(burst())(request.build()), new CameraCaptureSession.CaptureCallback {
             override def onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
               debug(s"Capture completed: " +
                     s"focus = ${result.get(CaptureResult.LENS_FOCUS_DISTANCE)}/${request.get(LENS_FOCUS_DISTANCE)} " +
                     s"iso = ${result.get(CaptureResult.SENSOR_SENSITIVITY)}/${request.get(SENSOR_SENSITIVITY)} " +
                     s"exposure = ${result.get(CaptureResult.SENSOR_EXPOSURE_TIME)}/${request.get(SENSOR_EXPOSURE_TIME)}")
 
-              val saveJpegTask = Future {
-                val image = jpegImage.take(10000)
-                val jpegBuffer = image.getPlanes()(0).getBuffer
-                val bytes = new Array[Byte](jpegBuffer.capacity)
-                jpegBuffer.get(bytes)
-                image.close()
-                new FileOutputStream(jpgFilePath).write(bytes)
-                MediaScannerConnection.scanFile(MainActivity.this, Array[String](jpgFilePath), null, null)
-                debug("JPEG saved")
+
+              rawResults.write((if (burst() > 1) s"${filePathBase}_$frameNumber.dng" else s"$filePathBase.dng", result))
+              frameNumber += 1
+            }
+
+            override def onCaptureSequenceCompleted(session: CameraCaptureSession, sequenceId: Int, frameNumber: Long) {
+              if (burst() == 1) {
+                tasks += Future {
+                  val image = jpegImages.read
+                  val jpgFilePath = s"$filePathBase.jpg"
+                  val jpegBuffer = image.getPlanes()(0).getBuffer
+                  val bytes = new Array[Byte](jpegBuffer.capacity)
+                  jpegBuffer.get(bytes)
+                  image.close()
+                  new FileOutputStream(jpgFilePath).write(bytes)
+                  MediaScannerConnection.scanFile(MainActivity.this, Array[String](jpgFilePath), null, null)
+                  debug("JPEG saved")
+                }
               }
 
-              val saveDngTask = Future {
-                val image = rawImage.take(10000)
-                val dngCreator = new DngCreator(characteristics, result).setOrientation(windowManager.getDefaultDisplay.getRotation)
-                dngCreator.writeImage(new FileOutputStream(dngFilePath), image)
-                dngCreator.close()
-                image.close()
-                MediaScannerConnection.scanFile(MainActivity.this, Array[String](dngFilePath), null, null)
-                debug("DNG saved")
+              tasks += Future {
+                for (n <- 1 to burst()) {
+                  val image = rawImages.read
+                  val (filePath, result) = rawResults.read
+
+                  val dngCreator = new DngCreator(characteristics, result).setOrientation(orientation)
+                  dngCreator.writeImage(new FileOutputStream(filePath), image)
+                  dngCreator.close()
+                  image.close()
+                  MediaScannerConnection.scanFile(MainActivity.this, Array[String](filePath), null, null)
+                  debug("DNG saved")
+                }
               }
 
-              val saveTask = for { _ <- saveJpegTask ; _ <- saveDngTask } yield ()
-
-              List(saveJpegTask, saveDngTask) foreach { _ onFailure { case NonFatal(e) => e.printStackTrace() } }
-              saveTask onComplete { _ => runOnUiThread { MainActivity.this.capturing() = false } }
-
+              tasks foreach { _ onFailure { case NonFatal(e) => e.printStackTrace() } }
+              tasks reduce { (_ : Future[Any]) zip (_ : Future[Any]) } onComplete { _ => runOnUiThread { MainActivity.this.capturing() = false } }
               createPreview.trigger()
             }
 
@@ -551,11 +573,11 @@ class MainActivity extends SActivity {
     }
 
     jpegImageReader.setOnImageAvailableListener(new OnImageAvailableListener {
-      override def onImageAvailable(reader: ImageReader) = jpegImage() = Option(reader.acquireNextImage())
+      override def onImageAvailable(reader: ImageReader) { jpegImages.write(reader.acquireNextImage()) }
     }, null)
 
     rawImageReader.setOnImageAvailableListener(new OnImageAvailableListener {
-      override def onImageAvailable(reader: ImageReader) = rawImage() = Option(reader.acquireNextImage())
+      override def onImageAvailable(reader: ImageReader) { rawImages.write(reader.acquireNextImage()) }
     }, null)
 
     val prefs = new Preferences(getSharedPreferences("lcamera", Context.MODE_PRIVATE))
@@ -564,6 +586,7 @@ class MainActivity extends SActivity {
     prefs.Boolean.autoExposure.foreach { autoExposure() = _ }
     prefs.Int.isoIndex.foreach { isoIndex() = _ }
     prefs.Int.exposureTimeIndex.foreach { exposureTimeIndex() = _ }
+    prefs.Int.burst.foreach { burst() = _ }
 
     orientationEventListener.enable()
   }
@@ -615,6 +638,7 @@ class MainActivity extends SActivity {
     prefs.autoExposure = autoExposure()
     prefs.isoIndex = isoIndex()
     prefs.exposureTimeIndex = exposureTimeIndex()
+    prefs.burst = burst()
   }
 
   override def onBackPressed() {
