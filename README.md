@@ -17,7 +17,7 @@
 
 ## Installation
 
-You can either install the pre-built debug APK (`lcamera-debug.apk`) found in the repository, or build and install the APK by yourself.
+You can either install the pre-built debug APK ([`lcamera-debug.apk`](lcamera-debug.apk?raw=true)) found in the repository, or build and install the APK by yourself.
 
 ## Usage
 
