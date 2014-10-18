@@ -144,7 +144,7 @@ class MainActivity extends SActivity {
 
     setSurfaceTextureListener(new TextureView.SurfaceTextureListener {
       override def onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
-        val textureSize = streamConfigurationMap.getOutputSizes(texture.getClass)(0)
+        val textureSize = streamConfigurationMap.getOutputSizes(texture.getClass)(5) // TODO: Don't hardcode this
         texture.setDefaultBufferSize(textureSize.getWidth, textureSize.getHeight)
         debug(s"Surface texture available: $texture")
         previewSurface() = Option(new Surface(texture))
@@ -165,7 +165,7 @@ class MainActivity extends SActivity {
   val setPreviewTransform: Int => Unit = (rotation) => {
     if (textureView.isAvailable) {
       textureView.setTransform {
-        val textureSize = streamConfigurationMap.getOutputSizes(textureView.getSurfaceTexture.getClass)(0)
+        val textureSize = streamConfigurationMap.getOutputSizes(textureView.getSurfaceTexture.getClass)(5)
         val viewRect = new RectF(0, 0, textureView.width, textureView.height)
         val bufferRect = new RectF(0, 0, textureSize.getHeight, textureSize.getWidth)
         bufferRect.offset(viewRect.centerX - bufferRect.centerX, viewRect.centerY - bufferRect.centerY)
@@ -424,7 +424,7 @@ class MainActivity extends SActivity {
           previewSurface <- previewSurfaceOpt
         } {
       debug(s"Creating preview session using $camera")
-      camera.createCaptureSession(List(previewSurface), new CameraCaptureSession.StateCallback {
+      camera.createCaptureSession(List(previewSurface, jpegSurface, rawSurface), new CameraCaptureSession.StateCallback {
         override def onConfigured(session: CameraCaptureSession) {
           debug(s"Preview session configured: ${session.toString}")
           previewSession() = Option(session)
@@ -489,10 +489,12 @@ class MainActivity extends SActivity {
   }
 
   val capture = () =>
-    for { camera <- this.camera() } {
+    for { camera <- this.camera()
+          previewSession <- this.previewSession()
+          previewSurface <- this.previewSurface()
+    } {
       debug(s"Starting capture using $camera")
       capturing() = true
-      previewSession() foreach { _.abortCaptures() }
 
       val time = new Time
       time.setToNow()
@@ -530,76 +532,66 @@ class MainActivity extends SActivity {
           case _ => 0
         })
         request.set(STATISTICS_LENS_SHADING_MAP_MODE, STATISTICS_LENS_SHADING_MAP_MODE_ON) // Required for RAW capture
-        targetSurfaces map { request.addTarget }
+        (previewSurface +: targetSurfaces) map { request.addTarget }
         request.build()
       }
 
-      previewSession() = None
-      debug(s"Creating capture session with $targetSurfaces")
-      camera.createCaptureSession(targetSurfaces, new CameraCaptureSession.StateCallback {
-        override def onConfigured(session: CameraCaptureSession) {
-          debug(s"Capture session configured: $session")
-          val tasks = new ListBuffer[Future[Unit]]
-          var frameNumber = 0
-          val rawResults = new Channel[(String, TotalCaptureResult)]
+      val tasks = new ListBuffer[Future[Unit]]
+      var frameNumber = 0
+      val rawResults = new Channel[(String, TotalCaptureResult)]
 
-          session.captureBurst(requests, new CameraCaptureSession.CaptureCallback {
-            override def onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
-              debug(s"Capture completed: " +
-                    s"focus = ${result.get(CaptureResult.LENS_FOCUS_DISTANCE)}/${request.get(LENS_FOCUS_DISTANCE)} " +
-                    s"iso = ${result.get(CaptureResult.SENSOR_SENSITIVITY)}/${request.get(SENSOR_SENSITIVITY)} " +
-                    s"exposure = ${result.get(CaptureResult.SENSOR_EXPOSURE_TIME)}/${request.get(SENSOR_EXPOSURE_TIME)}")
+      debug(s"Capturing with $previewSession")
+      previewSession.captureBurst(requests, new CameraCaptureSession.CaptureCallback {
+        override def onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
+          debug(s"Capture completed: " +
+                s"focus = ${result.get(CaptureResult.LENS_FOCUS_DISTANCE)}/${request.get(LENS_FOCUS_DISTANCE)} " +
+                s"iso = ${result.get(CaptureResult.SENSOR_SENSITIVITY)}/${request.get(SENSOR_SENSITIVITY)} " +
+                s"exposure = ${result.get(CaptureResult.SENSOR_EXPOSURE_TIME)}/${request.get(SENSOR_EXPOSURE_TIME)}")
 
-              rawResults.write((if (burst() > 1) s"${filePathBase}_$frameNumber.dng" else s"$filePathBase.dng", result))
-              frameNumber += 1
-            }
-
-            override def onCaptureSequenceCompleted(session: CameraCaptureSession, sequenceId: Int, frameNumber: Long) {
-              if (targetSurfaces.contains(jpegSurface)) {
-                tasks += Future {
-                  val image = jpegImages.read
-                  val jpgFilePath = s"$filePathBase.jpg"
-                  val jpegBuffer = image.getPlanes()(0).getBuffer
-                  val bytes = new Array[Byte](jpegBuffer.capacity)
-                  jpegBuffer.get(bytes)
-                  image.close()
-                  new FileOutputStream(jpgFilePath).write(bytes)
-                  MediaScannerConnection.scanFile(MainActivity.this, Array[String](jpgFilePath), null, null)
-                  debug("JPEG saved")
-                }
-              }
-
-              if (targetSurfaces.contains(rawSurface)) {
-                tasks += Future {
-                  for (n <- 1 to burst()) {
-                    val image = rawImages.read
-                    val (filePath, result) = rawResults.read
-
-                    val dngCreator = new DngCreator(characteristics, result).setOrientation(orientation)
-                    dngCreator.writeImage(new FileOutputStream(filePath), image)
-                    dngCreator.close()
-                    image.close()
-                    MediaScannerConnection.scanFile(MainActivity.this, Array[String](filePath), null, null)
-                    debug("DNG saved")
-                  }
-                }
-              }
-
-              tasks foreach { _ onFailure { case NonFatal(e) => e.printStackTrace() } }
-              tasks reduce { (_ : Future[Any]) zip (_ : Future[Any]) } onComplete { _ => runOnUiThread { MainActivity.this.capturing() = false } }
-              createPreview.trigger()
-            }
-
-            override def onCaptureFailed(session: CameraCaptureSession, request: CaptureRequest, failure: CaptureFailure) {
-              debug("Capture failed")
-              MainActivity.this.capturing() = false
-              createPreview.trigger()
-            }
-          }, null)
+          rawResults.write((if (burst() > 1) s"${filePathBase}_$frameNumber.dng" else s"$filePathBase.dng", result))
+          frameNumber += 1
         }
 
-        override def onConfigureFailed(session: CameraCaptureSession) {
-          debug("Capture session configuration failed")
+        override def onCaptureSequenceCompleted(session: CameraCaptureSession, sequenceId: Int, frameNumber: Long) {
+          if (targetSurfaces.contains(jpegSurface)) {
+            tasks += Future {
+              val image = jpegImages.read
+              val jpgFilePath = s"$filePathBase.jpg"
+              val jpegBuffer = image.getPlanes()(0).getBuffer
+              val bytes = new Array[Byte](jpegBuffer.capacity)
+              jpegBuffer.get(bytes)
+              image.close()
+              new FileOutputStream(jpgFilePath).write(bytes)
+              MediaScannerConnection.scanFile(MainActivity.this, Array[String](jpgFilePath), null, null)
+              debug("JPEG saved")
+            }
+          }
+
+          if (targetSurfaces.contains(rawSurface)) {
+            tasks += Future {
+              for (n <- 1 to burst()) {
+                val image = rawImages.read
+                val (filePath, result) = rawResults.read
+
+                val dngCreator = new DngCreator(characteristics, result).setOrientation(orientation)
+                dngCreator.writeImage(new FileOutputStream(filePath), image)
+                dngCreator.close()
+                image.close()
+                MediaScannerConnection.scanFile(MainActivity.this, Array[String](filePath), null, null)
+                debug("DNG saved")
+              }
+            }
+          }
+
+          tasks foreach { _ onFailure { case NonFatal(e) => e.printStackTrace() } }
+          tasks reduce { (_ : Future[Any]) zip (_ : Future[Any]) } onComplete { _ => runOnUiThread { MainActivity.this.capturing() = false } }
+          createPreview.trigger()
+        }
+
+        override def onCaptureFailed(session: CameraCaptureSession, request: CaptureRequest, failure: CaptureFailure) {
+          debug("Capture failed")
+          MainActivity.this.capturing() = false
+          createPreview.trigger()
         }
       }, null)
     }
