@@ -2,7 +2,7 @@
 
 ![Screenshot](screenshot.jpg?raw=true)
 
-**L Camera** is an open-source experimental camera app for Android L devices using the new `android.hardware.camera2` api. Currently, the only supported device is Nexus 5 running Android L preview.
+**L Camera** is an open-source experimental camera app for Android L devices using the new `android.hardware.camera2` api. Currently, the only supported device is Nexus 5 running Android Lollipop preview (LPX13D).
 
 *Please note that this app is intended to test and study new features of the camera API, it is not for general uses as it lacks many basic camera features (location tagging, white balance, photo review, flash control, video recording, etc).*
 
@@ -12,6 +12,7 @@
 * Manual exposure time (1/2, 1/4, 1/6, 1/8, 1/15, 1/30, 1/60, 1/100, 1/125, 1/250, 1/500, 1/1000, 1/2000, 1/4000, 1/8000)
 * Manual ISO (100, 200, 400, 800, 1600, 3200, 6400, 10000)
 * DNG output support
+* 30fps full-resolution burst capture with focus stacking & exposure bracketing
 * Material design
 
 ## Installation
@@ -20,13 +21,27 @@ You can either install the pre-built debug APK (`lcamera-debug.apk`) found in th
 
 ## Usage
 
-Use it like any camera. Tap anywhere on the preview screen to focus on a specific point (if auto focus is on), and this will also trigger the white balance/exposure metering sequence if auto exposure setting is on. Clicking the floating action button will bring up auto focus and auto exposure options (and more options to come, hopefully). Turning off the auto focus will allow you to control the focus distance manually. You can also disable auto exposure and manually set the desired shutter speed and ISO.
+Just use it like any camera! Tap the floating button on the left-bottom corner to bring up settings:
+
+* Focus
+ * Auto Focus: Whether the auto focus mechanism is enabled (tap on the preview to focus on a specific point).
+ * Focus Distance: Manually control focus distance if auto focus is turned off.
+* Exposure
+ * Auto Exposure: Whether auto exposure and auto white balance routines are enabled (tap on the preview to start a metering sequence).
+ * Shutter Speed: Control the exposure time. (Setting a slow shutter speed will affect preview frame rate)
+ * ISO: Control the sensitivity of the sensor.
+* Burst
+ * Burst: Control whether burst capturing is enabled. If enabled, the camera will capture 7 DNG images at maximum resolution at 30 fps. (Note that JPEG output is disabled during burst capturing.)
+ * Focus Stacking: If enabled, the camera will capture a series of images ranging from infinity focus and to the nearest focus distance possible.
+ * Exposure Bracketing: If enabled, the camera will capture a series of 7 images ranging from -3 to +3 EV of the standard expousre. (Only the shutter speed is varied, the ISO stays the same)
+
+If you are looking for a stopwatch to test the burst capture feature, check out [this jsfiddle](http://jsfiddle.net/jw2z5eeu/).
 
 After capturing, both DNG and JPEG files will be saved in `/sdcard/DCIM/Camera/` directory. Note that each DNG image is 15.36 MiB in size, so make sure you have plenty of free space available!
 
 ### What to do with DNG files
 
-Most RAW post-processing programs should be able to open them. While Adobe Lightroom is probably the most popular RAW editor, both [darktable](http://www.darktable.org/) (Linux, Mac) and [RawTherapee](http://rawtherapee.com/) (Windows, Linux, Mac) are free alternatives that offers very powerful editing capabilities.
+Most RAW post-processing programs should be able to open them. While Adobe Lightroom is probably the most popular RAW editor, both [darktable](http://www.darktable.org/) (Linux, Mac) and [RawTherapee](http://rawtherapee.com/) (Windows, Linux, Mac) are both free alternatives that also offer very powerful editing capabilities.
 
 ## How to build
 
@@ -50,8 +65,6 @@ The app is written in the [Scala](http://www.scala-lang.org/) programming langua
 * [Scala.Rx](https://github.com/lihaoyi/scala.rx): for reactive value propagation.
 * [Floating Action Button](https://github.com/makovkastar/FloatingActionButton): for the floating action button (FAB) featured in material design.
 
-Currently it is needed to create a new capture session for the actual capture, as reusing the preview session for capture outputs garbaged JPEG images (and interestingly the `RAW_SENSOR` output is not corrupted). This  will introduce additional shutter delay (<100ms on Nexus 5) into capture. Maybe there should be another mode with only RAW output which can directly grab images off the preview session.
-
 The preview code probably needs some major refactoring to avoid calling `setRepeatingRequest()`, so we don't end up with unwanted requests in the pipeline.
 
 To see debug outputs, set allowed logging priority of `lcamera` tag to `DEBUG`:
@@ -60,19 +73,12 @@ To see debug outputs, set allowed logging priority of `lcamera` tag to `DEBUG`:
 
 ## To-do
 
-* Add burst capturing mode (30fps @ 8mp on Nexus 5, supposedly)
- * Preliminary test seems to show that it is not possible to with JPEG outputs, try `ImageFormat.YUV_420_888`?
- * Exposure/focus bracketing anyone?
 * Add exposure compensation.
 * Support portrait orientation.
 * Simulate exposure compensation in preview? Currently setting a long shutter speed will throttle the preview frame rate.
 
 ## Known Issues
 
-* The new camera API is pretty unstable and will sometimes crash/reboot the device for no reason.
-* Sometimes the lens will refuse to move while capturing, no matter how you specify the capture request.
-* `source file '<path>/gen/com/melnykov/fab/R.java' could not be found` error while building
- * Just run the build command again.
 * AWB does not work in manual exposure mode. You can workaround the problem by setting the white balance in AE mode and switching back to manual mode.
 
 Please report any bugs on GitHub's issue tracker.
