@@ -94,7 +94,7 @@ class MainActivity extends SActivity {
   lazy val jpegSize = streamConfigurationMap.getOutputSizes(ImageFormat.JPEG)(0)
   lazy val rawSize = streamConfigurationMap.getOutputSizes(ImageFormat.RAW_SENSOR)(0)
   lazy val jpegImageReader = ImageReader.newInstance(jpegSize.getWidth, jpegSize.getHeight, ImageFormat.JPEG, 1)
-  lazy val rawImageReader = ImageReader.newInstance(rawSize.getWidth, rawSize.getHeight, ImageFormat.RAW_SENSOR, 10)
+  lazy val rawImageReader = ImageReader.newInstance(rawSize.getWidth, rawSize.getHeight, ImageFormat.RAW_SENSOR, 7)
   lazy val jpegSurface = jpegImageReader.getSurface
   lazy val rawSurface = rawImageReader.getSurface
   val jpegImages = new Channel[Image]
@@ -105,7 +105,9 @@ class MainActivity extends SActivity {
   val previewSession = NoneVar[CameraCaptureSession]
   val meteringRectangle = NoneVar[MeteringRectangle]
   val capturing = Var(false)
-  val burst = Var(8)
+  val burst = Var(1)
+  val focusStacking = Var(false)
+  val exposureBracketing = Var(false)
 
   val autoFocus = Var(true)
   val focusDistance = Var(0f)
@@ -206,15 +208,10 @@ class MainActivity extends SActivity {
       text = "Burst"
       typeface = Typeface.DEFAULT_BOLD
       textSize = 16.sp
-    }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
-
-    += (new Switch(ctx) {
-      val obs = burst.foreach(n => setChecked(n > 1))
-      setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener {
-        override def onCheckedChanged(v: CompoundButton, checked: Boolean) {
-          burst() = if (checked) 8 else 1
-        }
-      })
+      onClick {
+        burstView.enabled = true
+        circularReveal(burstView, this.left + this.getWidth / 2, this.top + this.getHeight / 2, aeView.width).start()
+      }
     }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
   }
 
@@ -302,6 +299,42 @@ class MainActivity extends SActivity {
                  autoExposure.foreach(ae => textColor = if (ae) Color.parseColor("#d0d0d0") else Color.parseColor("#000000")))
     }.padding(4.dip, 16.dip, 4.dip, 16.dip).<<.wrap.>>)
     += (nextButton { isoIndex() = Math.min(isoMap.length - 1, isoIndex() + 1) }.<<(32.dip, 32.dip).>>)
+  }
+
+  lazy val burstView = new SLinearLayout {
+    backgroundColor = Color.parseColor("#fafafa")
+    gravity = Gravity.CENTER
+    visibility = View.INVISIBLE
+    enabled = false
+
+    += (new STextView {
+      text = "Burst"
+      typeface = Typeface.DEFAULT_BOLD
+      textSize = 16.sp
+    }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
+
+    += (new Switch(ctx) {
+      val obs = burst.foreach(n => setChecked(n > 1))
+      setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener {
+        override def onCheckedChanged(v: CompoundButton, checked: Boolean) {
+          burst() = if (checked) 7 else 1
+        }
+      })
+    }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
+
+    += (new SCheckBox {
+      text = "Focus Stacking"
+      val obs = (focusStacking foreach { setChecked },
+                 burst foreach { n => enabled = n > 1})
+      onCheckedChanged { (v: View, checked: Boolean) => focusStacking() = checked }
+    })
+
+    += (new SCheckBox {
+      text = "Exposure Bracketing"
+      val obs = (exposureBracketing foreach { setChecked },
+                 burst foreach { n => enabled = n > 1})
+      onCheckedChanged { (v: View, checked: Boolean) => exposureBracketing() = checked }
+    })
   }
 
   lazy val fabSize = 40.dip
@@ -455,30 +488,42 @@ class MainActivity extends SActivity {
       time.setToNow()
       val filePathBase = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + time.format("/Camera/IMG_%Y%m%d_%H%M%S")
       val orientation = windowManager.getDefaultDisplay.getRotation
-
-      val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
-
-      request.set(CONTROL_MODE, CONTROL_MODE_AUTO)
-
-      request.set(CONTROL_AF_MODE, CONTROL_AF_MODE_OFF)
-      request.set(LENS_FOCUS_DISTANCE, focusDistance())
-
-      request.set(CONTROL_AE_MODE, CONTROL_AE_MODE_OFF)
-      request.set(SENSOR_SENSITIVITY, if (autoExposure()) autoIso() else iso())
-      request.set(SENSOR_EXPOSURE_TIME, if (autoExposure()) autoExposureTime() else exposureTime())
-
-      request.set(JPEG_QUALITY, 95.toByte)
-      request.set(JPEG_ORIENTATION, orientation match {
-        case Surface.ROTATION_0 => 90
-        case Surface.ROTATION_90 => 0
-        case Surface.ROTATION_180 => 270
-        case Surface.ROTATION_270 => 180
-        case _ => 0
-      })
-      request.set(STATISTICS_LENS_SHADING_MAP_MODE, STATISTICS_LENS_SHADING_MAP_MODE_ON) // Required for RAW capture
-
       val targetSurfaces = if (burst() > 1) List(rawSurface) else List(jpegSurface, rawSurface)
-      targetSurfaces map { request.addTarget }
+
+      val requests = for (n <- 0 to burst() - 1) yield {
+        val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+
+        request.set(CONTROL_MODE, CONTROL_MODE_AUTO)
+
+        request.set(CONTROL_AF_MODE, CONTROL_AF_MODE_OFF)
+        if (burst() > 1 && focusStacking()) {
+          request.set(LENS_FOCUS_DISTANCE, minFocusDistance * (n.toFloat / (burst() - 1)))
+        } else {
+          request.set(LENS_FOCUS_DISTANCE, focusDistance())
+        }
+
+        val bracketMap = Vector[Double](8, 4, 2, 1, 0.5, 0.25, 0.125)
+        request.set(CONTROL_AE_MODE, CONTROL_AE_MODE_OFF)
+        request.set(SENSOR_SENSITIVITY, if (autoExposure()) autoIso() else iso())
+        if (burst() > 1 && exposureBracketing()) {
+          request.set(SENSOR_EXPOSURE_TIME, ((if (autoExposure()) autoExposureTime() else exposureTime()) * bracketMap(n)).round)
+        } else {
+          request.set(SENSOR_EXPOSURE_TIME, if (autoExposure()) autoExposureTime() else exposureTime())
+        }
+
+
+        request.set(JPEG_QUALITY, 95.toByte)
+        request.set(JPEG_ORIENTATION, orientation match {
+          case Surface.ROTATION_0 => 90
+          case Surface.ROTATION_90 => 0
+          case Surface.ROTATION_180 => 270
+          case Surface.ROTATION_270 => 180
+          case _ => 0
+        })
+        request.set(STATISTICS_LENS_SHADING_MAP_MODE, STATISTICS_LENS_SHADING_MAP_MODE_ON) // Required for RAW capture
+        targetSurfaces map { request.addTarget }
+        request.build()
+      }
 
       previewSession() = None
       debug(s"Creating capture session with $targetSurfaces")
@@ -489,7 +534,7 @@ class MainActivity extends SActivity {
           var frameNumber = 0
           val rawResults = new Channel[(String, TotalCaptureResult)]
 
-          session.captureBurst(List.fill(burst())(request.build()), new CameraCaptureSession.CaptureCallback {
+          session.captureBurst(requests, new CameraCaptureSession.CaptureCallback {
             override def onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
               debug(s"Capture completed: " +
                     s"focus = ${result.get(CaptureResult.LENS_FOCUS_DISTANCE)}/${request.get(LENS_FOCUS_DISTANCE)} " +
@@ -501,7 +546,7 @@ class MainActivity extends SActivity {
             }
 
             override def onCaptureSequenceCompleted(session: CameraCaptureSession, sequenceId: Int, frameNumber: Long) {
-              if (burst() == 1) {
+              if (targetSurfaces.contains(jpegSurface)) {
                 tasks += Future {
                   val image = jpegImages.read
                   val jpgFilePath = s"$filePathBase.jpg"
@@ -515,17 +560,19 @@ class MainActivity extends SActivity {
                 }
               }
 
-              tasks += Future {
-                for (n <- 1 to burst()) {
-                  val image = rawImages.read
-                  val (filePath, result) = rawResults.read
+              if (targetSurfaces.contains(rawSurface)) {
+                tasks += Future {
+                  for (n <- 1 to burst()) {
+                    val image = rawImages.read
+                    val (filePath, result) = rawResults.read
 
-                  val dngCreator = new DngCreator(characteristics, result).setOrientation(orientation)
-                  dngCreator.writeImage(new FileOutputStream(filePath), image)
-                  dngCreator.close()
-                  image.close()
-                  MediaScannerConnection.scanFile(MainActivity.this, Array[String](filePath), null, null)
-                  debug("DNG saved")
+                    val dngCreator = new DngCreator(characteristics, result).setOrientation(orientation)
+                    dngCreator.writeImage(new FileOutputStream(filePath), image)
+                    dngCreator.close()
+                    image.close()
+                    MediaScannerConnection.scanFile(MainActivity.this, Array[String](filePath), null, null)
+                    debug("DNG saved")
+                  }
                 }
               }
 
@@ -567,6 +614,7 @@ class MainActivity extends SActivity {
       += (toolbar.<<(MATCH_PARENT, WRAP_CONTENT).alignParentLeft.leftOf(captureButton).alignParentBottom.>>)
       += (afView.<<(MATCH_PARENT, WRAP_CONTENT).alignParentLeft.leftOf(captureButton).alignParentBottom.>>)
       += (aeView.<<(MATCH_PARENT, WRAP_CONTENT).alignParentLeft.leftOf(captureButton).alignParentBottom.>>)
+      += (burstView.<<(MATCH_PARENT, WRAP_CONTENT).alignParentLeft.leftOf(captureButton).alignParentBottom.>>)
       += (captureButton.<<(96.dip, MATCH_PARENT).alignParentRight.alignParentTop.alignParentBottom.>>)
       += (progressBar.<<(MATCH_PARENT, WRAP_CONTENT).alignParentLeft.leftOf(captureButton).alignParentBottom.marginBottom(-4.dip).>>)
       += (fab.<<.wrap.alignParentLeft.alignParentBottom.marginLeft(fabMargin).marginBottom(fabMargin).>>)
@@ -587,6 +635,8 @@ class MainActivity extends SActivity {
     prefs.Int.isoIndex.foreach { isoIndex() = _ }
     prefs.Int.exposureTimeIndex.foreach { exposureTimeIndex() = _ }
     prefs.Int.burst.foreach { burst() = _ }
+    prefs.Boolean.focusStacking.foreach { focusStacking() = _ }
+    prefs.Boolean.exposureBracketing.foreach { exposureBracketing() = _ }
 
     orientationEventListener.enable()
   }
@@ -639,6 +689,8 @@ class MainActivity extends SActivity {
     prefs.isoIndex = isoIndex()
     prefs.exposureTimeIndex = exposureTimeIndex()
     prefs.burst = burst()
+    prefs.focusStacking = focusStacking()
+    prefs.exposureBracketing = exposureBracketing()
   }
 
   override def onBackPressed() {
@@ -648,6 +700,9 @@ class MainActivity extends SActivity {
     } else if (aeView.enabled) {
       slideDownHide(aeView)
       aeView.enabled = false
+    } else if (burstView.enabled) {
+      slideDownHide(burstView)
+      burstView.enabled = false
     } else if (toolbar.enabled) {
       val animatorSet = new AnimatorSet()
       animatorSet.play(circularHide(toolbar, fabMargin + fabSize / 2, toolbar.height - fabMargin - fabSize / 2, toolbar.width))
