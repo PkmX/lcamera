@@ -2,9 +2,11 @@
 
 ![Screenshot](screenshot.jpg?raw=true)
 
-**L Camera** is an open-source experimental camera app for Android L devices using the new `android.hardware.camera2` api. Currently, the only supported device is Nexus 5 running Android Lollipop preview (LPX13D).
+**L Camera** is an open-source experimental camera app for Android L devices using the new `android.hardware.camera2` API. Currently, the only supported device is Nexus 5 running Android Lollipop preview (LPX13D).
 
 *Please note that this app is intended to test and study new features of the camera API, it is not for general uses as it lacks many basic camera features (location tagging, white balance, photo review, flash control, video recording, etc).*
+
+[See what you can achieve on the Nexus 5 with the new API](http://imgur.com/a/qQkkR#0).
 
 ## Features
 
