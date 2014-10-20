@@ -2,6 +2,7 @@ package pkmx.lcamera
 
 import collection.JavaConversions._
 import java.io.FileOutputStream
+import java.text.DecimalFormat
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.{Channel, ExecutionContext, Future}
 import scala.collection.immutable.Vector
@@ -124,9 +125,9 @@ class MainActivity extends SActivity {
   val isoIndex = Var(0) // ISO 100
   val iso = isoIndex.map(isoMap)
   val autoIso = Var(100)
-  val exposureTimeMap = Vector(2, 4, 6, 8, 15, 30, 60, 100, 125, 250, 500, 1000, 2000, 4000, 8000)
-  val exposureTimeIndex = Var(6) // 1/60s
-  val exposureTime = Rx { 1000000000l / exposureTimeMap(exposureTimeIndex()) }
+  val exposureTimeMap = Vector[Double](1.2, 2, 4, 6, 8, 15, 30, 60, 100, 125, 250, 500, 1000, 2000, 4000, 8000, 16000)
+  val exposureTimeIndex = Var(7) // 1/60s
+  val exposureTime = Rx { (1000000000.0 / exposureTimeMap(exposureTimeIndex())).toLong }
   val autoExposureTime = Var(1000000000l)
   val metering = Var(false)
 
@@ -302,7 +303,7 @@ class MainActivity extends SActivity {
 
     += (mkButton(Prev, { exposureTimeIndex() = Math.max(exposureTimeIndex() - 1, 0) }).<<(32.dip, 32.dip).>>)
     += (new STextView {
-      val obs = (exposureTimeIndex.foreach(v => text = s"1/${exposureTimeMap(v)}"),
+      val obs = (exposureTimeIndex.foreach(v => text = s"1/${new DecimalFormat("#.#").format(exposureTimeMap(v))}"),
                  autoExposure.foreach(ae => textColor = if (ae) Color.parseColor("#d0d0d0") else Color.parseColor("#000000")))
     }.padding(4.dip, 16.dip, 4.dip, 16.dip).<<.wrap.>>)
     += (mkButton(Next, { exposureTimeIndex() = Math.min(exposureTimeMap.length - 1, exposureTimeIndex() + 1) }).<<(32.dip, 32.dip).>>)
