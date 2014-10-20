@@ -1,7 +1,7 @@
 package pkmx.lcamera
 
 import collection.JavaConversions._
-import java.io.FileOutputStream
+import java.io.{File, FileOutputStream}
 import java.text.DecimalFormat
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.{Channel, ExecutionContext, Future}
@@ -12,12 +12,13 @@ import scala.util.control.NonFatal
 import android.animation._
 import android.content.Context
 import android.graphics._
+import android.graphics.drawable.ColorDrawable
 import android.hardware.camera2._
 import android.hardware.camera2.CameraCharacteristics._
 import android.hardware.camera2.CameraMetadata._
 import android.hardware.camera2.CaptureRequest._
 import android.hardware.camera2.params._
-import android.media.{Image, MediaScannerConnection, ImageReader}
+import android.media.{MediaRecorder, Image, MediaScannerConnection, ImageReader}
 import android.media.ImageReader.OnImageAvailableListener
 import android.os._
 import android.text.format.Time
@@ -35,8 +36,8 @@ import rx.ops._
 object Utils {
   implicit val execCtx = ExecutionContext.fromExecutor(AsyncTask.THREAD_POOL_EXECUTOR)
 
-  implicit def requestKeyCovariant[T <: Any](k: CaptureRequest.Key[T]) = k.asInstanceOf[CaptureRequest.Key[Any]]
-  implicit def resultKeyCovariant[T <: Any](k: CaptureRequest.Key[T]) = k.asInstanceOf[CaptureResult.Key[Any]]
+  implicit def requestKeyCovariant[_ <: Any](k: CaptureRequest.Key[_]) = k.asInstanceOf[CaptureRequest.Key[Any]]
+  implicit def resultKeyCovariant[_ <: Any](k: CaptureRequest.Key[_]) = k.asInstanceOf[CaptureResult.Key[Any]]
 
   type Fab = FloatingActionButton
 
@@ -86,6 +87,36 @@ object Utils {
   class SSwitch(implicit ctx: Context) extends Switch(ctx) with TraitCompoundButton[Switch] {
     val basis = this
   }
+
+  class MyMediaRecorder(width: Int, height: Int, orientation: Int) extends MediaRecorder {
+    val filePath = {
+      val time = new Time
+      time.setToNow()
+      Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + time.format("/Camera/VID_%Y%m%d_%H%M%S.mp4")
+    }
+
+    setVideoSource(2) // SURFACE
+    setAudioSource(1) // MIC
+    setOutputFormat(2) // MPEG_4
+    setAudioEncodingBitRate(384000)
+    setAudioSamplingRate(44100)
+    setVideoSize(width, height)
+    setVideoEncodingBitRate(35000000)
+    setVideoFrameRate(30)
+    setOrientationHint(orientationToDegree(orientation))
+    setOutputFile(filePath)
+    setVideoEncoder(2) // H264
+    setAudioEncoder(3) // AAC
+    prepare()
+  }
+  
+  def orientationToDegree(orientation: Int) = orientation match {
+    case Surface.ROTATION_0 => 90
+    case Surface.ROTATION_90 => 0
+    case Surface.ROTATION_180 => 270
+    case Surface.ROTATION_270 => 180
+    case _ => 0
+  }
 }
 
 import Utils._
@@ -112,8 +143,17 @@ class MainActivity extends SActivity {
   val camera = NoneVar[CameraDevice]
   val previewSurface = NoneVar[Surface]
   val previewSession = NoneVar[CameraCaptureSession]
+  val mediaRecorder = NoneVar[MyMediaRecorder]
+  val videoSurface = Rx { mediaRecorder() map (_.getSurface) }
   val meteringRectangle = NoneVar[MeteringRectangle]
+
+  sealed trait CaptureMode
+  case object PhotoMode extends CaptureMode
+  case object VideoMode extends CaptureMode
+
+  val captureMode = Var[CaptureMode](PhotoMode)
   val capturing = Var(false)
+  val recording = Var(false)
   val burst = Var(1)
   val focusStacking = Var(false)
   val exposureBracketing = Var(false)
@@ -181,26 +221,35 @@ class MainActivity extends SActivity {
   }
 
   lazy val captureButton = new SImageButton {
-    val enableColor = Color.parseColor("#4285f4")
-    val disableColor = Color.parseColor("#d0d0d0")
-    def colorFade(from: Int, to: Int) {
-      val anim = ObjectAnimator.ofArgb(this, "backgroundColor", from, to)
+    val photoStandbyColor = Color.parseColor("#4285f4")
+    val capturingColor = Color.parseColor("#d0d0d0")
+    val videoStandbyColor = Color.parseColor("#99cc00")// ("#009688")
+    val recordingColor = Color.parseColor("#ff4444")
+    def backgroundFadeTo(color: Int) {
+      val anim = ObjectAnimator.ofArgb(this, "backgroundColor", background.asInstanceOf[ColorDrawable].getColor, color)
       anim.addListener(new AnimatorListenerAdapter() {
-        override def onAnimationStart(animator: Animator) { backgroundColor = from }
-        override def onAnimationEnd(animator: Animator) { backgroundColor = to }
+        override def onAnimationEnd(animator: Animator) { backgroundColor = color }
       })
       anim.setDuration(150)
       anim.start()
     }
 
-    imageDrawable = R.drawable.ic_camera
-    backgroundColor = enableColor
+    backgroundColor = photoStandbyColor
     scaleType = ScaleType.FIT_CENTER
-    onClick { capture() }
-    val obs = capturing.foreach { c =>
-      enabled(!c)
-      if (c) colorFade(enableColor, disableColor) else colorFade (disableColor, enableColor)
-    }
+    onClick { captureMode() match {
+      case PhotoMode => capture()
+      case VideoMode => if (!recording()) startRecording() else stopRecording()
+    }}
+    val obs =
+      for { (mode, c, r) <- Rx { (captureMode(), capturing(), recording()) } } {
+        enabled(!c)
+        (mode, c, r) match {
+          case (PhotoMode, true, _) => { backgroundFadeTo(capturingColor) ; imageDrawable = R.drawable.ic_camera }
+          case (PhotoMode, false, _) => { backgroundFadeTo(photoStandbyColor) ; imageDrawable = R.drawable.ic_camera }
+          case (VideoMode, _, true) => { backgroundFadeTo(recordingColor) ; imageDrawable = R.drawable.ic_av_stop }
+          case (VideoMode, _, false) => { backgroundFadeTo(videoStandbyColor) ; imageDrawable = R.drawable.ic_video }
+        }
+      }
   }
 
   lazy val toolbar = new SLinearLayout {
@@ -237,7 +286,28 @@ class MainActivity extends SActivity {
         burstView.enabled = true
         circularReveal(burstView, this.left + this.getWidth / 2, this.top + this.getHeight / 2, aeView.width).start()
       }
+
+      val obs = Rx { captureMode() == PhotoMode } foreach { en =>
+        enabled(en)
+        textColor = if (en) Color.parseColor("#737373") else Color.parseColor("#d0d0d0")
+      }
     }.padding(16.dip, 16.dip, 16.dip, 16.dip).<<.wrap.>>)
+
+    += (new SImageView {
+      val obs = (captureMode foreach {
+                   m => imageDrawable = m match {
+                     case PhotoMode => R.drawable.ic_camera_black
+                     case VideoMode => R.drawable.ic_video_black
+                 }},
+                 Rx { !capturing() && !recording() } foreach { setEnabled })
+      backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
+      onClick {
+        captureMode() = captureMode() match {
+          case PhotoMode => VideoMode
+          case VideoMode => PhotoMode
+        }
+      }
+    }.<<(48.dip, 48.dip).marginLeft(16.dip).marginRight(16.dip).>>)
   }
 
   lazy val afView = new SLinearLayout {
@@ -404,6 +474,7 @@ class MainActivity extends SActivity {
         request.set(SENSOR_EXPOSURE_TIME, exposureTime)
       }
       request.addTarget(previewSurface)
+      videoSurface() foreach { request.addTarget }
 
       previewSession.setRepeatingRequest(request.build(), new CameraCaptureSession.CaptureCallback {
         override def onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) = {
@@ -420,15 +491,28 @@ class MainActivity extends SActivity {
     }
 
   val createPreview =
-    for { (cameraOpt, previewSurfaceOpt) <- Rx { (this.camera(), this.previewSurface()) }
+    for { (cameraOpt, previewSurfaceOpt, captureMode, videoSurfaceOpt) <- Rx { (this.camera(), this.previewSurface(), this.captureMode(), this.videoSurface()) }
           camera <- cameraOpt
           previewSurface <- previewSurfaceOpt
         } {
       debug(s"Creating preview session using $camera")
-      camera.createCaptureSession(List(previewSurface, jpegSurface, rawSurface), new CameraCaptureSession.StateCallback {
+
+      val surfaces = captureMode match {
+        case PhotoMode => List(previewSurface, jpegSurface, rawSurface)
+        case VideoMode => videoSurfaceOpt match {
+          case Some(surface) => List(previewSurface, surface)
+          case None => List(previewSurface)
+        }
+      }
+
+      camera.createCaptureSession(surfaces, new CameraCaptureSession.StateCallback {
         override def onConfigured(session: CameraCaptureSession) {
           debug(s"Preview session configured: ${session.toString}")
           previewSession() = Option(session)
+          mediaRecorder() foreach { mr =>
+            mr.start()
+            recording() = true
+          }
         }
 
         override def onConfigureFailed(session: CameraCaptureSession) {
@@ -489,6 +573,28 @@ class MainActivity extends SActivity {
     meteringRectangle() = Option(mr)
   }
 
+  val startRecording = () => {
+    debug("Start recording")
+    mediaRecorder() = Option(new MyMediaRecorder(3264, 2448, windowManager.getDefaultDisplay.getRotation))
+  }
+
+  val stopRecording = () => {
+    debug("Stop recording")
+    mediaRecorder() foreach { mr =>
+      if (recording())
+        try {
+          mr.stop()
+          MediaScannerConnection.scanFile(MainActivity.this, Array[String](mr.filePath), null, null)
+        } catch {
+          case e: RuntimeException => new File(mr.filePath).delete()
+        }
+      mr.reset()
+      mr.release()
+      recording() = false
+    }
+    mediaRecorder() = None
+  }
+
   val capture = () =>
     for { camera <- this.camera()
           previewSession <- this.previewSession()
@@ -528,13 +634,7 @@ class MainActivity extends SActivity {
         }
 
         request.set(JPEG_QUALITY, 95.toByte)
-        request.set(JPEG_ORIENTATION, orientation match {
-          case Surface.ROTATION_0 => 90
-          case Surface.ROTATION_90 => 0
-          case Surface.ROTATION_180 => 270
-          case Surface.ROTATION_270 => 180
-          case _ => 0
-        })
+        request.set(JPEG_ORIENTATION, orientationToDegree(orientation))
         request.set(STATISTICS_LENS_SHADING_MAP_MODE, STATISTICS_LENS_SHADING_MAP_MODE_ON) // Required for RAW capture
         (if (burst() > 1) targetSurfaces else previewSurface +: targetSurfaces) map { request.addTarget }
         request.build()
@@ -679,6 +779,7 @@ class MainActivity extends SActivity {
   override def onPause() {
     super.onPause()
 
+    stopRecording()
     camera().foreach(_.close())
     camera() = None
     previewSession() = None
