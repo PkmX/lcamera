@@ -657,16 +657,14 @@ class MainActivity extends SActivity {
 
       override def onError(device: CameraDevice, error: Int) {
         debug(s"Camera error: $device, $error")
-        camera() = None
-        previewSession() = None
+        device.close()
         longToast(s"Unable to open camera ($error)")
         MainActivity.this.finish()
       }
 
       override def onDisconnected(device: CameraDevice) {
         debug(s"Camera disconnected: $device")
-        camera() = None
-        previewSession() = None
+        device.close()
       }
 
       override def onClosed(device: CameraDevice) {
