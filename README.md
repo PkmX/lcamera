@@ -4,17 +4,18 @@
 
 **L Camera** is an open-source experimental camera app for Android L devices using the new `android.hardware.camera2` API. Currently, the only supported device is Nexus 5 running Android Lollipop preview (LPX13D).
 
-*Please note that this app is intended to test and study new features of the camera API, it is not for general uses as it lacks many basic camera features (location tagging, white balance, photo review, flash control, video recording, etc).*
+*Please note that this app is intended to test and study new features of the camera API, it is not for general uses as it lacks many basic camera features (location tagging, white balance, photo review, flash control, etc).*
 
 [See what you can achieve on the Nexus 5 with the new API](http://imgur.com/a/qQkkR#0).
 
 ## Features
 
 * True manual focus (adjustable focus distance)
-* Manual exposure time (1/2, 1/4, 1/6, 1/8, 1/15, 1/30, 1/60, 1/100, 1/125, 1/250, 1/500, 1/1000, 1/2000, 1/4000, 1/8000)
+* Manual exposure time (0.8", 1/2, 1/4, 1/6, 1/8, 1/15, 1/30, 1/60, 1/100, 1/125, 1/250, 1/500, 1/1000, 1/2000, 1/4000, 1/8000, 1/16000)
 * Manual ISO (100, 200, 400, 800, 1600, 3200, 6400, 10000)
 * DNG output support
-* 30fps full-resolution burst capture with focus stacking & exposure bracketing
+* 30-fps full-resolution burst capture with focus stacking & exposure bracketing in DNG
+* 30-fps full-resolution video recording
 * Material design
 
 ## Installation
@@ -36,10 +37,11 @@ Just use it like any camera! Tap the floating button on the left-bottom corner t
  * Burst: Control whether burst capturing is enabled. If enabled, the camera will capture 7 DNG images at maximum resolution at 30 fps. (Note that JPEG output is disabled during burst capturing.)
  * Focus Stacking: If enabled, the camera will capture a series of images ranging from infinity focus and to the nearest focus distance possible.
  * Exposure Bracketing: If enabled, the camera will capture a series of 7 images ranging from -3 to +3 EV of the standard expousre. (Only the shutter speed is varied, the ISO stays the same)
+* Photo/Video: Switch between photo capturing and video recording mode. The video is recorded at maximum resolution (3264x2448) at 30 fps (may be lower if you choose a slow shutter speed), encoded with H.264 at 35000kbps and AAC-LC in MP4 container. Focus distance and exposure are adjustable during recording.
 
 If you are looking for a stopwatch to test the burst capture feature, check out [this jsfiddle](http://jsfiddle.net/jw2z5eeu/).
 
-After capturing, both DNG and JPEG files will be saved in `/sdcard/DCIM/Camera/` directory. Note that each DNG image is 15.36 MiB in size, so make sure you have plenty of free space available!
+After capturing, output files will be saved to the `/sdcard/DCIM/Camera/` directory. Note that each DNG image is 15.36 MiB in size, so make sure you have plenty of free space available!
 
 ### Working with DNG files
 
@@ -73,19 +75,9 @@ To see debug outputs, set allowed logging priority of `lcamera` tag to `DEBUG`:
 
     $ adb shell setprop log.tag.lcamera DEBUG
 
-## To-do
+## Issues
 
-* Add exposure compensation.
-* Support portrait orientation.
-* Simulate exposure compensation in preview? Currently setting a long shutter speed will throttle the preview frame rate.
-
-## Known Issues
-
-* AWB does not work in manual exposure mode. You can workaround the problem by setting the white balance in AE mode and switching back to manual mode.
-* There appears to be image distortion effects at very fast shutter speed.
-* Image distrotion with focus stacking.
-
-Please report any bugs on GitHub's issue tracker.
+Please report any bugs or feature requests on GitHub's issue tracker.
 
 ## License
 
@@ -101,3 +93,4 @@ Please report any bugs on GitHub's issue tracker.
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
