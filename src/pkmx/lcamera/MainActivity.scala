@@ -101,7 +101,7 @@ object Utils {
     setAudioEncodingBitRate(384000)
     setAudioSamplingRate(44100)
     setVideoSize(width, height)
-    setVideoEncodingBitRate(35000000)
+    setVideoEncodingBitRate(65000000)
     setVideoFrameRate(30)
     setOrientationHint(orientationToDegree(orientation))
     setOutputFile(filePath)
