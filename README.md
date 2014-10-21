@@ -47,17 +47,16 @@ After capturing, output files will be saved to the `/sdcard/DCIM/Camera/` direct
 
 Most RAW post-processing programs should be able to open them. While Adobe Lightroom is probably the most popular RAW editor, both [darktable](http://www.darktable.org/) (Linux, Mac) and [RawTherapee](http://rawtherapee.com/) (Windows, Linux, Mac) are both free alternatives that also offer very powerful editing capabilities.
 
-## How to build
+## FAQ
 
-You must have both **scala 2.11.2** and **sbt >= 0.13** installed.
+### 'Cannot parse package' error while installing.
+Make sure the downloaded apk is not corrupted, as it seems some browsers download GitHub's webpage instead of the actual apk.
 
-To build the app (the resulting APK will be placed in the `bin/` directory):
+### Will there be 60 fps (120 fps) recording?
+It's being investigated. However it seems the camera isn't able to operate faster than 30 fps right now, even when requesting low resolution uncompressed YUV frames.
 
-    $ sbt package
-
-To build and run the app on device (assuming you have `adb` and developer mode enabled):
-
-    $ sbt run
+### Will you implement feature X?
+Open an issue (one per feature please) on the tracker and I will see what I can do. However, the priority of development is investigating new ways to use the camera hardware rather than reimplement features that have been possible, or things that can be done in post-processing.
 
 ## Hacking/Technical
 
@@ -69,7 +68,19 @@ The app is written in the [Scala](http://www.scala-lang.org/) programming langua
 * [Scala.Rx](https://github.com/lihaoyi/scala.rx): for reactive value propagation.
 * [Floating Action Button](https://github.com/makovkastar/FloatingActionButton): for the floating action button (FAB) featured in material design.
 
-The preview code probably needs some major refactoring to avoid calling `setRepeatingRequest()`, so we don't end up with unwanted requests in the pipeline.
+### How to build
+
+You must have both **scala 2.11.2** and **sbt >= 0.13** installed.
+
+To build the app (the resulting APK will be placed in the `bin/` directory):
+
+    $ sbt package
+
+To build and run the app on device (assuming you have `adb` and developer mode enabled):
+
+    $ sbt run
+
+### Debugging
 
 To see debug outputs, set allowed logging priority of `lcamera` tag to `DEBUG`:
 
