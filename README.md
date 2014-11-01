@@ -49,17 +49,20 @@ Most RAW post-processing programs should be able to open them. While Adobe Light
 
 ## FAQ
 
-### 'Cannot parse package' error while installing.
-Make sure the downloaded apk is not corrupted, as it seems some browsers download GitHub's webpage instead of the actual apk.
+### Why do I get the 'Cannot parse package' error while installing?
+Make sure the downloaded apk is not corrupted, as it seems some browsers download GitHub's webpage instead of the actual apk. You must also have the latest Lollipop preview (LPX13D) running on your Nexus 5.
 
 ### Will there be 60 fps (120 fps) recording?
-It's being investigated. However it seems the camera isn't able to operate faster than 30 fps right now, even when requesting low resolution uncompressed YUV frames.
+Check [pkmx/lcamera#4](https://github.com/PkmX/lcamera/issues/4) for current progress.
 
 ### Does it need root?
 No.
 
 ### Will you implement feature X?
 Open an issue (one per feature please) on the tracker and I will see what I can do. However, the priority of development is investigating new ways to use the camera hardware rather than reimplement features that have been possible, or things that can be done in post-processing.
+
+### I get the "Unable to open camera (1)" errors while opening L Camera and the camera cannot be used by any apps.
+There appears to be a problem with device locking and camera. Ususally, you can solve this problem removing L Camera from the recent apps list. If that doesn't work and you have both root and busybox installed, you can fix this by running `kill $(pidof mediaserver)` in a root shell.
 
 ## Hacking/Technical
 
