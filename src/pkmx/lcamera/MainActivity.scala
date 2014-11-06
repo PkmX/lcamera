@@ -205,8 +205,7 @@ class MainActivity extends SActivity with Observable {
   val autoExposureTime = Var(1000000000l)
   val metering = Var(false)
 
-  lazy val textureView = new TextureView(ctx) with TraitView[TextureView] {
-    val basis = this
+  lazy val textureView = new STextureView {
     onTouch((v, e) => {
       if (e.getActionMasked == MotionEvent.ACTION_DOWN) {
         if (autoFocus() || autoExposure()) {
@@ -237,7 +236,7 @@ class MainActivity extends SActivity with Observable {
     })
   }
 
-  val setPreviewTransform: Int => Unit = (rotation) => {
+  val setPreviewTransform: Int => Unit = rotation => {
     if (textureView.isAvailable) {
       textureView.setTransform {
         val textureSize = streamConfigurationMap.getOutputSizes(textureView.getSurfaceTexture.getClass).filter(sz => sz < rawSize && sz < new Size(1920, 1080))(0)
@@ -257,7 +256,7 @@ class MainActivity extends SActivity with Observable {
   lazy val captureButton = new SImageButton {
     val photoStandbyColor = Color.parseColor("#4285f4")
     val capturingColor = Color.parseColor("#d0d0d0")
-    val videoStandbyColor = Color.parseColor("#99cc00")// ("#009688")
+    val videoStandbyColor = Color.parseColor("#99cc00")
     val recordingColor = Color.parseColor("#ff4444")
     def fadeTo(color: Int, drawable: Int) {
       imageDrawable = drawable
@@ -699,7 +698,7 @@ class MainActivity extends SActivity with Observable {
       time.setToNow()
       val filePathBase = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + time.format("/Camera/IMG_%Y%m%d_%H%M%S")
       val orientation = windowManager.getDefaultDisplay.getRotation
-      val targetSurfaces = if (burst() > 1) List(rawSurface) else if (saveDng()) List(jpegSurface, rawSurface) else List(jpegSurface)
+      val targetSurfaces = if (burst() > 1) List(rawSurface) else if (saveDng()) List(previewSurface, jpegSurface, rawSurface) else List(previewSurface, jpegSurface)
 
       val requests = for (n <- 0 to burst() - 1) yield {
         val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
@@ -725,10 +724,10 @@ class MainActivity extends SActivity with Observable {
           request.set(SENSOR_EXPOSURE_TIME, if (autoExposure()) autoExposureTime() else exposureTime())
         }
 
-        request.set(JPEG_QUALITY, 95.toByte)
+        request.set(JPEG_QUALITY, 100.toByte)
         request.set(JPEG_ORIENTATION, orientationToDegree(orientation))
         request.set(STATISTICS_LENS_SHADING_MAP_MODE, STATISTICS_LENS_SHADING_MAP_MODE_ON) // Required for RAW capture
-        (if (burst() > 1) targetSurfaces else previewSurface +: targetSurfaces) map { request.addTarget }
+        targetSurfaces map request.addTarget
         request.build()
       }
 
@@ -780,7 +779,7 @@ class MainActivity extends SActivity with Observable {
           }
 
           tasks foreach { _ onFailure { case NonFatal(e) => e.printStackTrace() } }
-          tasks reduce { (_ : Future[Any]) zip (_ : Future[Any]) } onComplete { _ => runOnUiThread { MainActivity.this.capturing() = false } }
+          tasks reduce { (_: Future[Any]) zip (_: Future[Any]) } onComplete { _ => runOnUiThread { MainActivity.this.capturing() = false } }
           startPreview.trigger()
         }
 
@@ -929,7 +928,10 @@ class MainActivity extends SActivity with Observable {
 
   override def onKeyDown(keyCode: Int, event: KeyEvent): Boolean = {
     if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-      capture()
+      captureMode() match {
+        case PhotoMode => capture()
+        case VideoMode => if (!recording()) startRecording() else stopRecording()
+      }
       true
     } else {
       super.onKeyDown(keyCode, event)
