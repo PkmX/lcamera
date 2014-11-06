@@ -16,6 +16,7 @@
 * DNG output support
 * 30-fps full-resolution burst capture with focus stacking & exposure bracketing in DNG
 * 30-fps full-resolution video recording
+* Experimental 60-fps video recording at 720p
 * Material design
 
 ## Installation
@@ -89,7 +90,7 @@ The app is written in the [Scala](http://www.scala-lang.org/) programming langua
 
 ### How to build
 
-You must have both **scala 2.11.2** and **sbt >= 0.13** installed.
+You must have both **scala 2.11.4** and **sbt >= 0.13** installed.
 
 To build the app (the resulting APK will be placed in the `bin/` directory):
 
@@ -111,7 +112,7 @@ Please report any bugs or feature requests on GitHub's issue tracker.
 
 ## Credits
 
-* Martin Wawro for his support in enabling 60fps video recording
+* Martin Wawro: for his support in enabling 60fps video recording
 
 ## License
 
