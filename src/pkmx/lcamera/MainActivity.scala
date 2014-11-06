@@ -126,11 +126,20 @@ object Utils {
   sealed case class VideoConfiguration(width: Int, height: Int, fps: Int, bitrate: Int) {
     override def toString: String = s"${width}x${height}x$fps @ ${new DecimalFormat("#.#").format(bitrate.toDouble / 1000000)}mbps"
   }
+
+  sealed trait Observable {
+    var obses: List[Obs] = List()
+
+    def observe(obs: Obs): Obs = {
+      obses = obs :: obses
+      obs
+    }
+  }
 }
 
 import Utils._
 
-class MainActivity extends SActivity {
+class MainActivity extends SActivity with Observable {
   override implicit val loggerTag = LoggerTag("lcamera")
   lazy val cameraManager = getSystemService(Context.CAMERA_SERVICE).asInstanceOf[CameraManager]
   lazy val cameraId = cameraManager.getCameraIdList()(0)
@@ -244,12 +253,13 @@ class MainActivity extends SActivity {
     }
   }
 
-  lazy val captureButton = new SImageButton {
+  lazy val captureButton = new SImageButton with Observable {
     val photoStandbyColor = Color.parseColor("#4285f4")
     val capturingColor = Color.parseColor("#d0d0d0")
     val videoStandbyColor = Color.parseColor("#99cc00")// ("#009688")
     val recordingColor = Color.parseColor("#ff4444")
-    def backgroundFadeTo(color: Int) {
+    def fadeTo(color: Int, drawable: Int) {
+      imageDrawable = drawable
       val anim = ObjectAnimator.ofArgb(this, "backgroundColor", background.asInstanceOf[ColorDrawable].getColor, color)
       anim.addListener(new AnimatorListenerAdapter() {
         override def onAnimationEnd(animator: Animator) { backgroundColor = color }
@@ -264,16 +274,17 @@ class MainActivity extends SActivity {
       case PhotoMode => capture()
       case VideoMode => if (!recording()) startRecording() else stopRecording()
     }}
-    val obs =
+    observe {
       for { (mode, c, r) <- Rx { (captureMode(), capturing(), recording()) } } {
         enabled(!c)
         (mode, c, r) match {
-          case (PhotoMode, true, _) => { backgroundFadeTo(capturingColor) ; imageDrawable = R.drawable.ic_camera }
-          case (PhotoMode, false, _) => { backgroundFadeTo(photoStandbyColor) ; imageDrawable = R.drawable.ic_camera }
-          case (VideoMode, _, true) => { backgroundFadeTo(recordingColor) ; imageDrawable = R.drawable.ic_av_stop }
-          case (VideoMode, _, false) => { backgroundFadeTo(videoStandbyColor) ; imageDrawable = R.drawable.ic_video }
+          case (PhotoMode, true, _) => fadeTo(capturingColor, R.drawable.ic_camera)
+          case (PhotoMode, false, _) => fadeTo(photoStandbyColor, R.drawable.ic_camera)
+          case (VideoMode, _, true) => fadeTo(recordingColor, R.drawable.ic_av_stop)
+          case (VideoMode, _, false) => fadeTo(videoStandbyColor, R.drawable.ic_video)
         }
       }
+    }
   }
 
   lazy val toolbar = new SLinearLayout {
@@ -290,7 +301,7 @@ class MainActivity extends SActivity {
         afView.enabled = true
         circularReveal(afView, this.left + this.getWidth / 2, this.top + this.getHeight / 2, afView.width).start()
       }
-    }.padding(16.dip, 16.dip, 16.dip, 16.dip).<<.wrap.>>)
+    }.padding(16.dip, 16.dip, 16.dip, 16.dip).wrap)
 
     += (new STextView {
       text = "Exposure"
@@ -300,7 +311,7 @@ class MainActivity extends SActivity {
         aeView.enabled = true
         circularReveal(aeView, this.left + this.getWidth / 2, this.top + this.getHeight / 2, aeView.width).start()
       }
-    }.padding(16.dip, 16.dip, 16.dip, 16.dip).<<.wrap.>>)
+    }.padding(16.dip, 16.dip, 16.dip, 16.dip).wrap)
 
     += (new STextView {
       text = "Burst"
@@ -311,22 +322,21 @@ class MainActivity extends SActivity {
         circularReveal(burstView, this.left + this.getWidth / 2, this.top + this.getHeight / 2, aeView.width).start()
       }
 
-      val obs = Rx { captureMode() == PhotoMode } foreach { en =>
+      observe { Rx { captureMode() == PhotoMode } foreach { en =>
         enabled(en)
         textColor = if (en) Color.parseColor("#737373") else Color.parseColor("#d0d0d0")
-      }
-    }.padding(16.dip, 16.dip, 16.dip, 16.dip).<<.wrap.>>)
+      }}
+    }.padding(16.dip, 16.dip, 16.dip, 16.dip).wrap)
 
     += (new SImageView {
-      val obs = (captureMode foreach {
-                   m => imageDrawable = m match {
-                     case PhotoMode => R.drawable.ic_camera_black
-                     case VideoMode => R.drawable.ic_video_black
-                 }},
-                 Rx { !capturing() && !recording() } foreach { setEnabled })
+      observe { captureMode foreach {
+        m => imageDrawable = m match {
+          case PhotoMode => R.drawable.ic_camera_black
+          case VideoMode => R.drawable.ic_video_black
+      }}}
+      observe { Rx { !capturing() && !recording() } foreach { setEnabled } }
       backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
       onClick {
-
         captureMode() = captureMode() match {
           case PhotoMode => VideoMode
           case VideoMode => PhotoMode
@@ -341,7 +351,6 @@ class MainActivity extends SActivity {
         new AlertDialogBuilder {
           setView(new SVerticalLayout {
               += (new SLinearLayout {
-                setPadding(16.dip, 16.dip, 16.dip, 16.dip)
 
                 +=(new STextView {
                   text = "Video Resolution"
@@ -349,7 +358,7 @@ class MainActivity extends SActivity {
                 }.wrap.<<.Gravity(Gravity.LEFT).marginRight(16.dip).>>)
 
                 +=(new STextView {
-                  val obs = videoConfiguration foreach { vc => text = vc.toString }
+                  observe { videoConfiguration foreach { vc => text = vc.toString } }
                 }.wrap.<<.Gravity(Gravity.RIGHT).marginLeft(16.dip).>>)
 
                 onClick {
@@ -365,8 +374,7 @@ class MainActivity extends SActivity {
                             case false => "#d0d0d0"
                           }}
                           textSize = 16.sp
-                          padding(16.dip, 16.dip, 16.dip, 16.dip)
-                        }
+                        }.padding(16.dip)
                     }
 
                     setAdapter(videoConfigurationAdapter, new DialogInterface.OnClickListener {
@@ -374,7 +382,7 @@ class MainActivity extends SActivity {
                     })
                   }.show()
                 }
-              }.fw)
+              }.padding(16.dip).fw)
           }.fill)
         }.show()
       }
@@ -391,20 +399,20 @@ class MainActivity extends SActivity {
       text = "Auto Focus"
       typeface = Typeface.DEFAULT_BOLD
       textSize = 16.sp
-    }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
+    }.padding(8.dip, 16.dip, 8.dip, 16.dip).wrap)
     += (new SSwitch {
-      val obs = autoFocus.foreach(setChecked)
+      observe { autoFocus.foreach(setChecked) }
       onCheckedChanged { (v: View, checked: Boolean) => autoFocus() = checked }
-    }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
+    }.padding(8.dip, 16.dip, 8.dip, 16.dip).wrap)
     += (new SSeekBar {
       max = (minFocusDistance * 100).round
-      val obs = (autoFocus.foreach(af => enabled = !af),
-                 focusDistance.foreach(fd => setProgress((fd * 100).round)))
+      observe { autoFocus foreach { af => enabled = !af } }
+      observe { focusDistance.foreach { fd => setProgress { (fd * 100).round } } }
       onProgressChanged { (seekbar: SeekBar, value: Int, fromUser: Boolean) => {
         if (fromUser)
           focusDistance() = value.toFloat / 100
       }}
-    }.padding(8.dip, 8.dip, 8.dip, 8.dip).<<(MATCH_PARENT, WRAP_CONTENT).>>)
+    }.padding(8.dip, 8.dip, 8.dip, 8.dip).fw)
   }.padding(16.dip, 0, 16.dip, 0)
 
   lazy val aeView = new SLinearLayout {
@@ -417,19 +425,19 @@ class MainActivity extends SActivity {
       text = "Auto Exposure"
       typeface = Typeface.DEFAULT_BOLD
       textSize = 16.sp
-    }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
+    }.padding(8.dip, 16.dip, 8.dip, 16.dip).wrap)
 
     += (new SSwitch {
-      val obs = autoExposure.foreach(setChecked)
+      observe { autoExposure foreach setChecked }
       onCheckedChanged { (v: CompoundButton, checked: Boolean) => autoExposure() = checked }
-    }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
+    }.padding(8.dip, 16.dip, 8.dip, 16.dip).wrap)
 
     sealed trait PrevNext
     case object Prev extends PrevNext
     case object Next extends PrevNext
     def mkButton(pv: PrevNext, f: => Unit) = new SImageView {
       backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
-      val obs = autoExposure.foreach { ae =>
+      observe { autoExposure.foreach { ae =>
         enabled = !ae
         imageDrawable = (pv, ae) match {
           case (Prev, false) => R.drawable.ic_navigation_previous_item
@@ -437,23 +445,23 @@ class MainActivity extends SActivity {
           case (Next, false) => R.drawable.ic_navigation_next_item
           case (Next, true) => R.drawable.ic_navigation_next_item_disabled
         }
-      }
+      }}
 
       onClick(f)
     }
 
     += (mkButton(Prev, { exposureTimeIndex() = Math.max(exposureTimeIndex() - 1, 0) }).<<(32.dip, 32.dip).>>)
     += (new STextView {
-      val obs = (exposureTimeIndex.foreach(v => text = s"1/${new DecimalFormat("#.#").format(exposureTimeMap(v))}"),
-                 autoExposure.foreach(ae => textColor = if (ae) Color.parseColor("#d0d0d0") else Color.parseColor("#000000")))
-    }.padding(4.dip, 16.dip, 4.dip, 16.dip).<<.wrap.>>)
+      observe { exposureTimeIndex foreach { v => text = s"1/${new DecimalFormat("#.#").format(exposureTimeMap(v))}" } }
+      observe { autoExposure foreach { ae => textColor = if (ae) Color.parseColor("#d0d0d0") else Color.parseColor("#000000") } }
+    }.padding(4.dip, 16.dip, 4.dip, 16.dip).wrap)
     += (mkButton(Next, { exposureTimeIndex() = Math.min(exposureTimeMap.length - 1, exposureTimeIndex() + 1) }).<<(32.dip, 32.dip).>>)
 
     += (mkButton(Prev, { isoIndex() = Math.max(isoIndex() - 1, 0) }).<<(32.dip, 32.dip).>>)
     += (new STextView {
-      val obs = (iso.foreach(v => text = s"ISO $v"),
-                 autoExposure.foreach(ae => textColor = if (ae) Color.parseColor("#d0d0d0") else Color.parseColor("#000000")))
-    }.padding(4.dip, 16.dip, 4.dip, 16.dip).<<.wrap.>>)
+      observe { iso foreach { v => text = s"ISO $v" } }
+      observe { autoExposure foreach { ae => textColor = Color.parseColor { if (ae) "#d0d0d0" else "#000000" } } }
+    }.padding(4.dip, 16.dip, 4.dip, 16.dip).wrap)
     += (mkButton(Next, { isoIndex() = Math.min(isoMap.length - 1, isoIndex() + 1) }).<<(32.dip, 32.dip).>>)
   }
 
@@ -467,24 +475,24 @@ class MainActivity extends SActivity {
       text = "Burst"
       typeface = Typeface.DEFAULT_BOLD
       textSize = 16.sp
-    }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
+    }.padding(8.dip, 16.dip, 8.dip, 16.dip).wrap)
 
     += (new SSwitch {
-      val obs = burst.foreach(n => setChecked(n > 1))
+      observe { burst foreach { n => checked = n > 1 } }
       onCheckedChanged { (v: CompoundButton, checked: Boolean) => burst() = if (checked) 7 else 1 }
-    }.padding(8.dip, 16.dip, 8.dip, 16.dip).<<.wrap.>>)
+    }.padding(8.dip, 16.dip, 8.dip, 16.dip).wrap)
 
     += (new SCheckBox {
       text = "Focus Stacking"
-      val obs = (focusStacking foreach { setChecked },
-                 burst foreach { n => enabled = n > 1})
+      observe { focusStacking foreach { setChecked } }
+      observe { burst foreach { n => enabled = n > 1} }
       onCheckedChanged { (v: View, checked: Boolean) => focusStacking() = checked }
     })
 
     += (new SCheckBox {
       text = "Exposure Bracketing"
-      val obs = (exposureBracketing foreach { setChecked },
-                 burst foreach { n => enabled = n > 1})
+      observe { exposureBracketing foreach { setChecked } }
+      observe { burst foreach { n => enabled = n > 1} }
       onCheckedChanged { (v: View, checked: Boolean) => exposureBracketing() = checked }
     })
   }
@@ -513,7 +521,7 @@ class MainActivity extends SActivity {
   lazy val progressBar = new ProgressBar(ctx, null, android.R.attr.progressBarStyleHorizontal) with TraitProgressBar[ProgressBar] {
     val basis = this
     indeterminate = true
-    val obs = capturing foreach { c => visibility = if (c) View.VISIBLE else View.INVISIBLE}
+    observe { capturing foreach { c => visibility = if (c) View.VISIBLE else View.INVISIBLE } }
   }
 
   val manualFocusDistance = focusDistance.filter(_ => !this.autoFocus())
@@ -562,7 +570,7 @@ class MainActivity extends SActivity {
       }, null)
     }
 
-  val createPreview =
+  observe {
     for { (cameraOpt, previewSurfaceOpt, captureMode, videoSurfaceOpt) <- Rx { (this.camera(), this.previewSurface(), this.captureMode(), this.videoSurface()) }
           camera <- cameraOpt
           previewSurface <- previewSurfaceOpt
@@ -592,8 +600,9 @@ class MainActivity extends SActivity {
         }
       }, null)
     }
+  }
 
-  val triggerMetering =
+  observe {
     for { (cameraOpt, mrOpt, previewSurfaceOpt, previewSessionOpt) <- Rx { (this.camera(), this.meteringRectangle(), this.previewSurface(), this.previewSession()) }
           camera <- cameraOpt
           mr <- mrOpt
@@ -625,6 +634,7 @@ class MainActivity extends SActivity {
       metering() = true
       previewSession.capture(request.build(), null, null)
     }
+  }
 
   val setMeteringRectangle = (v: View, e: MotionEvent) => {
     val meteringRectangleSize = 300
@@ -787,12 +797,12 @@ class MainActivity extends SActivity {
 
     contentView = new SRelativeLayout {
       += (textureView.<<.alignParentLeft.alignParentTop.alignParentBottom.leftOf(captureButton).>>)
-      += (toolbar.<<(MATCH_PARENT, WRAP_CONTENT).alignParentLeft.leftOf(captureButton).alignParentBottom.>>)
-      += (afView.<<(MATCH_PARENT, WRAP_CONTENT).alignParentLeft.leftOf(captureButton).alignParentBottom.>>)
-      += (aeView.<<(MATCH_PARENT, WRAP_CONTENT).alignParentLeft.leftOf(captureButton).alignParentBottom.>>)
-      += (burstView.<<(MATCH_PARENT, WRAP_CONTENT).alignParentLeft.leftOf(captureButton).alignParentBottom.>>)
+      += (toolbar.<<.fw.alignParentLeft.leftOf(captureButton).alignParentBottom.>>)
+      += (afView.<<.fw.alignParentLeft.leftOf(captureButton).alignParentBottom.>>)
+      += (aeView.<<.fw.alignParentLeft.leftOf(captureButton).alignParentBottom.>>)
+      += (burstView.<<.fw.alignParentLeft.leftOf(captureButton).alignParentBottom.>>)
       += (captureButton.<<(96.dip, MATCH_PARENT).alignParentRight.alignParentTop.alignParentBottom.>>)
-      += (progressBar.<<(MATCH_PARENT, WRAP_CONTENT).alignParentLeft.leftOf(captureButton).alignParentBottom.marginBottom(-4.dip).>>)
+      += (progressBar.<<.fw.alignParentLeft.leftOf(captureButton).alignParentBottom.marginBottom(-4.dip).>>)
       += (fab.<<.wrap.alignParentLeft.alignParentBottom.marginLeft(fabMargin).marginBottom(fabMargin).>>)
     }
 
