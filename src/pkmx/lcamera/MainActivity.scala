@@ -670,7 +670,6 @@ class MainActivity extends SActivity with Observable {
   }
 
   val stopRecording = () => {
-    debug("Stop recording")
     mediaRecorder() foreach { mr =>
       if (recording())
         try {
@@ -682,6 +681,7 @@ class MainActivity extends SActivity with Observable {
       mr.reset()
       mr.release()
       recording() = false
+      debug("Stop recording")
     }
     mediaRecorder() = None
   }
@@ -804,6 +804,11 @@ class MainActivity extends SActivity with Observable {
 
   override def onCreate(savedInstanceState: Bundle) {
     super.onCreate(savedInstanceState)
+
+    if (List(0, 2) contains windowManager.getDefaultDisplay.getRotation) {
+      finish()
+      return
+    }
 
     contentView = new SRelativeLayout {
       += (textureView.<<.alignParentLeft.alignParentTop.alignParentBottom.leftOf(captureButton).>>)
