@@ -160,6 +160,7 @@ class MainActivity extends SActivity with Observable {
   lazy val rawSurface = rawImageReader.getSurface
   val jpegImages = new Channel[Image]
   val rawImages = new Channel[Image]
+  val saveDng = Var(true)
 
   val videoConfigurations = List(
     new VideoConfiguration(3264, 2448, 30, 65000000),
@@ -253,7 +254,7 @@ class MainActivity extends SActivity with Observable {
     }
   }
 
-  lazy val captureButton = new SImageButton with Observable {
+  lazy val captureButton = new SImageButton {
     val photoStandbyColor = Color.parseColor("#4285f4")
     val capturingColor = Color.parseColor("#d0d0d0")
     val videoStandbyColor = Color.parseColor("#99cc00")// ("#009688")
@@ -350,39 +351,49 @@ class MainActivity extends SActivity with Observable {
       onClick {
         new AlertDialogBuilder {
           setView(new SVerticalLayout {
-              += (new SLinearLayout {
+            += (new SLinearLayout {
+              +=(new STextView {
+                text = "Video Resolution"
+                typeface = Typeface.DEFAULT_BOLD
+              }.wrap.<<.Gravity(Gravity.LEFT).Weight(1.0f).marginRight(16.dip).>>)
 
-                +=(new STextView {
-                  text = "Video Resolution"
-                  typeface = Typeface.DEFAULT_BOLD
-                }.wrap.<<.Gravity(Gravity.LEFT).marginRight(16.dip).>>)
+              +=(new STextView {
+                observe { videoConfiguration foreach { vc => text = vc.toString } }
+              }.wrap.<<.Gravity(Gravity.RIGHT).Weight(1.0f).marginLeft(16.dip).>>)
 
-                +=(new STextView {
-                  observe { videoConfiguration foreach { vc => text = vc.toString } }
-                }.wrap.<<.Gravity(Gravity.RIGHT).marginLeft(16.dip).>>)
+              onClick {
+                new AlertDialogBuilder("Video Resolution") {
+                  val videoConfigurationAdapter: ArrayAdapter[VideoConfiguration] = new SArrayAdapter(videoConfigurations.toArray) {
+                    override def isEnabled(which: Int): Boolean = availableVideoConfigurations contains videoConfigurations(which)
 
-                onClick {
-                  new AlertDialogBuilder("Video Resolution") {
-                    val videoConfigurationAdapter: ArrayAdapter[VideoConfiguration] = new SArrayAdapter(videoConfigurations.toArray) {
-                      override def isEnabled(which: Int): Boolean = availableVideoConfigurations contains videoConfigurations(which)
+                    override def getView(which: Int, convertView: View, parent: ViewGroup): View =
+                      new STextView {
+                        text = videoConfigurations(which).toString
+                        textColor = Color.parseColor { videoConfigurationAdapter.isEnabled(which) match {
+                          case true => if (videoConfigurations(which) == videoConfiguration()) "#4285f4" else "#000000"
+                          case false => "#d0d0d0"
+                        }}
+                        textSize = 16.sp
+                      }.padding(16.dip)
+                  }
 
-                      override def getView(which: Int, convertView: View, parent: ViewGroup): View =
-                        new STextView {
-                          text = videoConfigurations(which).toString
-                          textColor = Color.parseColor { videoConfigurationAdapter.isEnabled(which) match {
-                            case true => if (videoConfigurations(which) == videoConfiguration()) "#4285f4" else "#000000"
-                            case false => "#d0d0d0"
-                          }}
-                          textSize = 16.sp
-                        }.padding(16.dip)
-                    }
+                  setAdapter(videoConfigurationAdapter, new DialogInterface.OnClickListener {
+                    override def onClick(dialog: DialogInterface, which: Int) { userVideoConfiguration() = videoConfigurations(which) }
+                  })
+                }.show()
+              }
+            }.padding(16.dip).fw)
+            += (new SLinearLayout {
+              +=(new STextView {
+                text = "Save DNG"
+                typeface = Typeface.DEFAULT_BOLD
+              }.wrap.<<.Gravity(Gravity.LEFT).Weight(1.0f).marginRight(16.dip).>>)
 
-                    setAdapter(videoConfigurationAdapter, new DialogInterface.OnClickListener {
-                      override def onClick(dialog: DialogInterface, which: Int) { userVideoConfiguration() = videoConfigurations(which) }
-                    })
-                  }.show()
-                }
-              }.padding(16.dip).fw)
+              +=(new SSwitch {
+                observe { saveDng foreach setChecked }
+                onCheckedChanged { (v: View, checked: Boolean) => saveDng() = checked }
+              }.wrap.<<.Gravity(Gravity.RIGHT).Weight(1.0f).marginLeft(16.dip).>>)
+            }.padding(16.dip).fw)
           }.fill)
         }.show()
       }
@@ -688,7 +699,7 @@ class MainActivity extends SActivity with Observable {
       time.setToNow()
       val filePathBase = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + time.format("/Camera/IMG_%Y%m%d_%H%M%S")
       val orientation = windowManager.getDefaultDisplay.getRotation
-      val targetSurfaces = if (burst() > 1) List(rawSurface) else List(jpegSurface, rawSurface)
+      val targetSurfaces = if (burst() > 1) List(rawSurface) else if (saveDng()) List(jpegSurface, rawSurface) else List(jpegSurface)
 
       val requests = for (n <- 0 to burst() - 1) yield {
         val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
@@ -831,6 +842,7 @@ class MainActivity extends SActivity with Observable {
       if (videoConfigurations contains vc)
         userVideoConfiguration() = vc
     }
+    prefs.Boolean.saveDng.foreach { saveDng() = _ }
 
     orientationEventListener.enable()
   }
@@ -890,6 +902,7 @@ class MainActivity extends SActivity with Observable {
     prefs.vcHeight = userVideoConfiguration().height
     prefs.vcFps = userVideoConfiguration().fps
     prefs.vcBitrate = userVideoConfiguration().bitrate
+    prefs.saveDng = saveDng()
   }
 
   override def onBackPressed() {
