@@ -5,12 +5,12 @@ android.Plugin.androidBuild
 
 name := "lcamera"
 
-scalaVersion := "2.11.2"
+scalaVersion := "2.11.4"
 
 resolvers += "Akka Snapshot Repository" at "http://repo.akka.io/snapshots/"
 
 libraryDependencies ++= Seq(
-  "org.scaloid" %% "scaloid" % "3.5-10",
+  "org.scaloid" %% "scaloid" % "3.6.1-10",
   "com.scalarx" %% "scalarx" % "0.2.6",
   "com.typesafe.akka" %% "akka-actor" % "2.3.6"
   // "com.melnykov" % "floatingactionbutton" % "1.0.4"
@@ -30,7 +30,7 @@ proguardOptions in Android ++=
   Seq ( "-dontobfuscate"
       , "-dontoptimize"
       , "-keepattributes Signature,InnerClasses,EnclosingMethod"
-      , "-dontwarn scala.collection.mutable.**"
+      , "-dontwarn scala.collection.**"
       , "-dontwarn sun.misc.Unsafe"
       )
 
