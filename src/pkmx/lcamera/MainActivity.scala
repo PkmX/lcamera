@@ -10,7 +10,7 @@ import scala.language.{existentials, implicitConversions}
 import scala.util.control.NonFatal
 
 import android.animation._
-import android.content.Context
+import android.content.{DialogInterface, Context}
 import android.graphics._
 import android.graphics.drawable.ColorDrawable
 import android.hardware.camera2._
@@ -27,6 +27,7 @@ import android.view.animation.{Animation, TranslateAnimation}
 import android.view.animation.Animation.AnimationListener
 import android.widget._
 import android.widget.ImageView.ScaleType
+import android.util.Size
 
 import com.melnykov.fab.FloatingActionButton
 import org.scaloid.common._
@@ -88,7 +89,7 @@ object Utils {
     val basis = this
   }
 
-  class MyMediaRecorder(width: Int, height: Int, orientation: Int) extends MediaRecorder {
+  class MyMediaRecorder(vc: VideoConfiguration, orientation: Int) extends MediaRecorder {
     val filePath = {
       val time = new Time
       time.setToNow()
@@ -100,9 +101,9 @@ object Utils {
     setOutputFormat(2) // MPEG_4
     setAudioEncodingBitRate(384000)
     setAudioSamplingRate(44100)
-    setVideoSize(width, height)
-    setVideoEncodingBitRate(65000000)
-    setVideoFrameRate(30)
+    setVideoSize(vc.width, vc.height)
+    setVideoEncodingBitRate(vc.bitrate)
+    setVideoFrameRate(vc.fps)
     setOrientationHint(orientationToDegree(orientation))
     setOutputFile(filePath)
     setVideoEncoder(2) // H264
@@ -117,6 +118,14 @@ object Utils {
     case Surface.ROTATION_270 => 180
     case _ => 0
   }
+
+  implicit class RichSize(size: Size) {
+    def <(rhs: Size) = size.getWidth < rhs.getWidth && size.getHeight < rhs.getHeight
+  }
+
+  sealed case class VideoConfiguration(width: Int, height: Int, fps: Int, bitrate: Int) {
+    override def toString: String = s"${width}x${height}x$fps @ ${new DecimalFormat("#.#").format(bitrate.toDouble / 1000000)}mbps"
+  }
 }
 
 import Utils._
@@ -127,18 +136,33 @@ class MainActivity extends SActivity {
   lazy val cameraId = cameraManager.getCameraIdList()(0)
   lazy val characteristics = cameraManager.getCameraCharacteristics(cameraId)
   lazy val streamConfigurationMap = characteristics.get(SCALER_STREAM_CONFIGURATION_MAP)
+  lazy val activeArraySize = characteristics.get(SENSOR_INFO_ACTIVE_ARRAY_SIZE)
   lazy val minFocusDistance = characteristics.get(LENS_INFO_MINIMUM_FOCUS_DISTANCE)
   lazy val isoRange = characteristics.get(SENSOR_INFO_SENSITIVITY_RANGE)
   lazy val exposureTimeRange = characteristics.get(SENSOR_INFO_EXPOSURE_TIME_RANGE)
 
-  lazy val jpegSize = streamConfigurationMap.getOutputSizes(ImageFormat.JPEG)(0)
+  lazy val jpegSize = streamConfigurationMap.getOutputSizes(ImageFormat.JPEG).filter(_ < rawSize)(0)
   lazy val rawSize = streamConfigurationMap.getOutputSizes(ImageFormat.RAW_SENSOR)(0)
+  lazy val minFrameDuration = streamConfigurationMap.getOutputMinFrameDuration(ImageFormat.RAW_SENSOR, rawSize)
+  lazy val rawFps = 1000000000 / minFrameDuration
   lazy val jpegImageReader = ImageReader.newInstance(jpegSize.getWidth, jpegSize.getHeight, ImageFormat.JPEG, 1)
   lazy val rawImageReader = ImageReader.newInstance(rawSize.getWidth, rawSize.getHeight, ImageFormat.RAW_SENSOR, 7)
   lazy val jpegSurface = jpegImageReader.getSurface
   lazy val rawSurface = rawImageReader.getSurface
   val jpegImages = new Channel[Image]
   val rawImages = new Channel[Image]
+
+  val videoConfigurations = List(
+    new VideoConfiguration(3264, 2448, 30, 65000000),
+    new VideoConfiguration(3264, 2448, 30, 35000000),
+    new VideoConfiguration(1920, 1080, 30, 8000000),
+    new VideoConfiguration(1600, 1200, 60, 16000000),
+    new VideoConfiguration(1600, 1200, 30, 8000000),
+    new VideoConfiguration(1280, 720, 60, 10000000),
+    new VideoConfiguration(1280, 720, 30, 5000000))
+  lazy val availableVideoConfigurations = videoConfigurations filter { vc => new Size(vc.width, vc.height) < rawSize && vc.fps <= rawFps }
+  lazy val userVideoConfiguration = Var(videoConfigurations(0))
+  lazy val videoConfiguration = Rx { if (availableVideoConfigurations contains userVideoConfiguration()) userVideoConfiguration() else availableVideoConfigurations(0) }
 
   val camera = NoneVar[CameraDevice]
   val previewSurface = NoneVar[Surface]
@@ -185,7 +209,7 @@ class MainActivity extends SActivity {
 
     setSurfaceTextureListener(new TextureView.SurfaceTextureListener {
       override def onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
-        val textureSize = streamConfigurationMap.getOutputSizes(texture.getClass)(5) // TODO: Don't hardcode this
+        val textureSize = streamConfigurationMap.getOutputSizes(texture.getClass).filter(sz => sz < rawSize && sz < new Size(1920, 1080))(0)
         texture.setDefaultBufferSize(textureSize.getWidth, textureSize.getHeight)
         debug(s"Surface texture available: $texture")
         previewSurface() = Option(new Surface(texture))
@@ -206,7 +230,7 @@ class MainActivity extends SActivity {
   val setPreviewTransform: Int => Unit = (rotation) => {
     if (textureView.isAvailable) {
       textureView.setTransform {
-        val textureSize = streamConfigurationMap.getOutputSizes(textureView.getSurfaceTexture.getClass)(5)
+        val textureSize = streamConfigurationMap.getOutputSizes(textureView.getSurfaceTexture.getClass).filter(sz => sz < rawSize && sz < new Size(1920, 1080))(0)
         val viewRect = new RectF(0, 0, textureView.width, textureView.height)
         val bufferRect = new RectF(0, 0, textureSize.getHeight, textureSize.getWidth)
         bufferRect.offset(viewRect.centerX - bufferRect.centerX, viewRect.centerY - bufferRect.centerY)
@@ -302,10 +326,57 @@ class MainActivity extends SActivity {
                  Rx { !capturing() && !recording() } foreach { setEnabled })
       backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
       onClick {
+
         captureMode() = captureMode() match {
           case PhotoMode => VideoMode
           case VideoMode => PhotoMode
         }
+      }
+    }.<<(48.dip, 48.dip).marginLeft(16.dip).marginRight(16.dip).>>)
+
+    += (new SImageView {
+      imageDrawable = R.drawable.ic_settings
+
+      onClick {
+        new AlertDialogBuilder {
+          setView(new SVerticalLayout {
+              += (new SLinearLayout {
+                setPadding(16.dip, 16.dip, 16.dip, 16.dip)
+
+                +=(new STextView {
+                  text = "Video Resolution"
+                  typeface = Typeface.DEFAULT_BOLD
+                }.wrap.<<.Gravity(Gravity.LEFT).marginRight(16.dip).>>)
+
+                +=(new STextView {
+                  val obs = videoConfiguration foreach { vc => text = vc.toString }
+                }.wrap.<<.Gravity(Gravity.RIGHT).marginLeft(16.dip).>>)
+
+                onClick {
+                  new AlertDialogBuilder("Video Resolution") {
+                    val videoConfigurationAdapter: ArrayAdapter[VideoConfiguration] = new SArrayAdapter(videoConfigurations.toArray) {
+                      override def isEnabled(which: Int): Boolean = availableVideoConfigurations contains videoConfigurations(which)
+
+                      override def getView(which: Int, convertView: View, parent: ViewGroup): View =
+                        new STextView {
+                          text = videoConfigurations(which).toString
+                          textColor = Color.parseColor { videoConfigurationAdapter.isEnabled(which) match {
+                            case true => if (videoConfigurations(which) == videoConfiguration()) "#4285f4" else "#000000"
+                            case false => "#d0d0d0"
+                          }}
+                          textSize = 16.sp
+                          padding(16.dip, 16.dip, 16.dip, 16.dip)
+                        }
+                    }
+
+                    setAdapter(videoConfigurationAdapter, new DialogInterface.OnClickListener {
+                      override def onClick(dialog: DialogInterface, which: Int) { userVideoConfiguration() = videoConfigurations(which) }
+                    })
+                  }.show()
+                }
+              }.fw)
+          }.fill)
+        }.show()
       }
     }.<<(48.dip, 48.dip).marginLeft(16.dip).marginRight(16.dip).>>)
   }
@@ -473,6 +544,7 @@ class MainActivity extends SActivity {
         request.set(SENSOR_SENSITIVITY, iso)
         request.set(SENSOR_EXPOSURE_TIME, exposureTime)
       }
+      request.set(SENSOR_FRAME_DURATION, minFrameDuration)
       request.addTarget(previewSurface)
       videoSurface() foreach { request.addTarget }
 
@@ -556,7 +628,6 @@ class MainActivity extends SActivity {
 
   val setMeteringRectangle = (v: View, e: MotionEvent) => {
     val meteringRectangleSize = 300
-    val activeArraySize = characteristics.get(SENSOR_INFO_ACTIVE_ARRAY_SIZE)
     val left = activeArraySize.left
     val right = activeArraySize.right
     val top = activeArraySize.top
@@ -575,7 +646,7 @@ class MainActivity extends SActivity {
 
   val startRecording = () => {
     debug("Start recording")
-    mediaRecorder() = Option(new MyMediaRecorder(3264, 2448, windowManager.getDefaultDisplay.getRotation))
+    mediaRecorder() = Option(new MyMediaRecorder(videoConfiguration(), windowManager.getDefaultDisplay.getRotation))
   }
 
   val stopRecording = () => {
@@ -742,6 +813,14 @@ class MainActivity extends SActivity {
     prefs.Int.burst.foreach { burst() = _ }
     prefs.Boolean.focusStacking.foreach { focusStacking() = _ }
     prefs.Boolean.exposureBracketing.foreach { exposureBracketing() = _ }
+    for { vcWidth <- prefs.Int.vcWidth
+          vcHeight <- prefs.Int.vcHeight
+          vcFps <- prefs.Int.vcFps
+          vcBitrate <- prefs.Int.vcBitrate } {
+      val vc = new VideoConfiguration(vcWidth, vcHeight, vcFps, vcBitrate)
+      if (videoConfigurations contains vc)
+        userVideoConfiguration() = vc
+    }
 
     orientationEventListener.enable()
   }
@@ -797,6 +876,10 @@ class MainActivity extends SActivity {
     prefs.burst = burst()
     prefs.focusStacking = focusStacking()
     prefs.exposureBracketing = exposureBracketing()
+    prefs.vcWidth = userVideoConfiguration().width
+    prefs.vcHeight = userVideoConfiguration().height
+    prefs.vcFps = userVideoConfiguration().fps
+    prefs.vcBitrate = userVideoConfiguration().bitrate
   }
 
   override def onBackPressed() {
