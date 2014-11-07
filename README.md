@@ -102,9 +102,9 @@ To build and run the app on device (assuming you have `adb` and developer mode e
 
 ### Debugging
 
-To see debug outputs, set allowed logging priority of `lcamera` tag to `DEBUG`:
+To see debug outputs, set allowed logging priority of `lcamera` tag to `VERBOSE`:
 
-    $ adb shell setprop log.tag.lcamera DEBUG
+    $ adb shell setprop log.tag.lcamera VERBOSE
 
 ## Issues
 

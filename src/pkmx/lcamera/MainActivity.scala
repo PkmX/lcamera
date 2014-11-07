@@ -27,7 +27,7 @@ import android.view.animation.{Animation, TranslateAnimation}
 import android.view.animation.Animation.AnimationListener
 import android.widget._
 import android.widget.ImageView.ScaleType
-import android.util.Size
+import android.util.{Log, Size}
 
 import com.melnykov.fab.FloatingActionButton
 import org.scaloid.common._
@@ -724,9 +724,17 @@ class MainActivity extends SActivity with Observable {
           request.set(SENSOR_EXPOSURE_TIME, if (autoExposure()) autoExposureTime() else exposureTime())
         }
 
-        request.set(JPEG_QUALITY, 100.toByte)
-        request.set(JPEG_ORIENTATION, orientationToDegree(orientation))
-        request.set(STATISTICS_LENS_SHADING_MAP_MODE, STATISTICS_LENS_SHADING_MAP_MODE_ON) // Required for RAW capture
+        request.set(LENS_OPTICAL_STABILIZATION_MODE, LENS_OPTICAL_STABILIZATION_MODE_ON)
+
+        if (targetSurfaces contains jpegSurface) {
+          request.set(JPEG_QUALITY, 100.toByte)
+          request.set(JPEG_ORIENTATION, orientationToDegree(orientation))
+        }
+
+        if (targetSurfaces contains rawSurface) {
+          request.set(STATISTICS_LENS_SHADING_MAP_MODE, STATISTICS_LENS_SHADING_MAP_MODE_ON) // Required for RAW capture
+        }
+
         targetSurfaces map request.addTarget
         request.build()
       }
@@ -802,12 +810,37 @@ class MainActivity extends SActivity with Observable {
     }
   }
 
+  val dumpCameraInfo = () =>
+    for { cameraId <- cameraManager.getCameraIdList } {
+      verbose(s"===== Camera $cameraId =====")
+      val characteristics = cameraManager.getCameraCharacteristics(cameraId)
+      val keys = characteristics.getKeys
+      for { key <- keys } {
+        verbose(key.getName)
+        characteristics.get(key) match {
+          case scm: StreamConfigurationMap =>
+            scm.getOutputFormats foreach { format =>
+              verbose(s"Format ${format.toString}")
+              Option(scm.getOutputSizes(format)) foreach { _ foreach { size =>
+                verbose(s"$size: ${scm.getOutputMinFrameDuration(format, size)} ${scm.getOutputStallDuration(format, size)}")
+              }}
+            }
+          case xs: Array[_] => xs foreach { x => verbose(x.toString) }
+          case x => verbose(x.toString)
+        }
+      }
+    }
+
   override def onCreate(savedInstanceState: Bundle) {
     super.onCreate(savedInstanceState)
 
     if (List(0, 2) contains windowManager.getDefaultDisplay.getRotation) {
       finish()
       return
+    }
+
+    if (Log.isLoggable("lcamera", Log.VERBOSE)) {
+      dumpCameraInfo()
     }
 
     contentView = new SRelativeLayout {
