@@ -52,11 +52,11 @@ After capturing, output files will be saved to the `/sdcard/DCIM/Camera/` direct
 Most RAW post-processing programs should be able to open them. While Adobe Lightroom is probably the most popular RAW editor, both [darktable](http://www.darktable.org/) (Linux, Mac) and [RawTherapee](http://rawtherapee.com/) (Windows, Linux, Mac) are both free alternatives that also offer very powerful editing capabilities.
 
 ### 60 FPS Recording
-First, see [pkmx/lcamera#4](https://github.com/PkmX/lcamera/issues/4#issuecomment-61356241) for limitations of this modification. Do note that this is a very hacky solution and I'm not responsible for any damages done to your system or device.
+First, see [pkmx/lcamera#4](https://github.com/PkmX/lcamera/issues/4#issuecomment-61356241) for limitations of this modification.
 
-To enable 60fps recording, a system library `/system/lib/libmmcamera_imx179.so` needs to be replaced with a modified version. The following is a simplified walkthrough of the process. Approach at your own risk and make sure you understand what you are doing.
+To enable 60fps recording, a system library `/system/lib/libmmcamera_imx179.so` needs to be replaced with a modified version. The following is a simplified walkthrough of the process. *Note that this is a very hacky solution and I'm not responsible for any damages done to your system or device. Approach at your own risk and make sure you understand what you are doing.*
 
-1. You must have root access and busybox installed on your Nexus 5. (The latter is not strictly required, but makes the process easier as it provides `install` and `pidof`. You can always use corresponding commands to perform these steps.)
+1. You must have root access and busybox installed on your Nexus 5. (The latter is not strictly required, but makes the process easier as it provides `install` and `pidof`.)
 2. Download `libmmcamera_imx179_lpx13d_60hz.so` in the repository and transfer it to the device. (The following assumes that it is located in `/sdcard/`.)
 3. Launch a root shell.
 4. Make a backup of the original library first: `cp /system/lib/libmmcamera_imx179.so /sdcard/libmmcamera_imx179_original.so`
