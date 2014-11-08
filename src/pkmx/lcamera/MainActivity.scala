@@ -37,8 +37,8 @@ import rx.ops._
 object Utils {
   implicit val execCtx = ExecutionContext.fromExecutor(AsyncTask.THREAD_POOL_EXECUTOR)
 
-  implicit def requestKeyCovariant[_ <: Any](k: CaptureRequest.Key[_]) = k.asInstanceOf[CaptureRequest.Key[Any]]
-  implicit def resultKeyCovariant[_ <: Any](k: CaptureRequest.Key[_]) = k.asInstanceOf[CaptureResult.Key[Any]]
+  implicit def requestKeyCovariant[_ <: Any](k: CaptureRequest.Key[_]): CaptureRequest.Key[Any] = k.asInstanceOf[CaptureRequest.Key[Any]]
+  implicit def resultKeyCovariant[_ <: Any](k: CaptureRequest.Key[_]): CaptureResult.Key[Any] = k.asInstanceOf[CaptureResult.Key[Any]]
 
   type Fab = FloatingActionButton
 
@@ -814,8 +814,7 @@ class MainActivity extends SActivity with Observable {
     for { cameraId <- cameraManager.getCameraIdList } {
       verbose(s"===== Camera $cameraId =====")
       val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-      val keys = characteristics.getKeys
-      for { key <- keys } {
+      for { key <- characteristics.getKeys } {
         verbose(key.getName)
         characteristics.get(key) match {
           case scm: StreamConfigurationMap =>
