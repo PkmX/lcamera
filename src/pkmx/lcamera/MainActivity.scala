@@ -93,7 +93,7 @@ object Utils {
     val filePath = {
       val time = new Time
       time.setToNow()
-      Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + time.format("/Camera/VID_%Y%m%d_%H%M%S.mp4")
+      Utils.createPathIfNotExist(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + "/Camera/") + time.format("VID_%Y%m%d_%H%M%S.mp4")
     }
 
     setVideoSource(2) // SURFACE
@@ -110,13 +110,21 @@ object Utils {
     setAudioEncoder(3) // AAC
     prepare()
   }
-  
+
   def orientationToDegree(orientation: Int) = orientation match {
     case Surface.ROTATION_0 => 90
     case Surface.ROTATION_90 => 0
     case Surface.ROTATION_180 => 270
     case Surface.ROTATION_270 => 180
     case _ => 0
+  }
+
+  def createPathIfNotExist(path: String): String = {
+    val file = new File(path)
+    if (!file.exists()) {
+      file.mkdirs()
+    }
+    path
   }
 
   implicit class RichSize(size: Size) {
@@ -696,7 +704,7 @@ class MainActivity extends SActivity with Observable {
 
       val time = new Time
       time.setToNow()
-      val filePathBase = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + time.format("/Camera/IMG_%Y%m%d_%H%M%S")
+      val filePathBase = Utils.createPathIfNotExist(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + "/Camera/") + time.format("IMG_%Y%m%d_%H%M%S")
       val orientation = windowManager.getDefaultDisplay.getRotation
       val targetSurfaces = if (burst() > 1) List(rawSurface) else if (saveDng()) List(previewSurface, jpegSurface, rawSurface) else List(previewSurface, jpegSurface)
 
