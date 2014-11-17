@@ -2,7 +2,7 @@
 
 ![Screenshot](screenshot.jpg?raw=true)
 
-**L Camera** is an open-source experimental camera app for Android L devices using the new `android.hardware.camera2` API. Currently, the only supported device is Nexus 5 running Android Lollipop preview (LPX13D).
+**L Camera** is an open-source experimental camera app for Android L devices using the new `android.hardware.camera2` API. Currently, the only supported device is Nexus 5 running Android 5.0 Lollipop.
 
 *Please note that this app is intended to test and study new features of the camera API, it is not for general uses as it lacks many basic camera features (location tagging, white balance, photo review, flash control, etc).*
 
@@ -11,8 +11,8 @@
 ## Features
 
 * True manual focus (adjustable focus distance)
-* Manual exposure time (0.8", 1/2, 1/4, 1/6, 1/8, 1/15, 1/30, 1/60, 1/100, 1/125, 1/250, 1/500, 1/1000, 1/2000, 1/4000, 1/8000, 1/16000)
-* Manual ISO (100, 200, 400, 800, 1600, 3200, 6400, 10000)
+* Manual exposure time (0.8" to 1/75000)
+* Manual ISO (100 to 10000)
 * DNG output support
 * 30-fps full-resolution burst capture with focus stacking & exposure bracketing in DNG
 * 30-fps full-resolution video recording
@@ -69,8 +69,11 @@ The camera should now be able to record at 60fps and you can choose 60fps option
 
 ## FAQ
 
+### Does it run on Nexus 4/7/10 or other phones that have received Lollipop update?
+It seems that none of those devices fully support the new API as of now (2014/11/17). If you want to verify, enable verbose output outlined in the "Debugging" section below, and check the output from `logcat`. You should see a dump of your device cameras' capabilities like [this](https://gist.github.com/PkmX/fefff90bab3b6eb2847f) when L Camera is started. Your camera's `android.request.availableCapabilities` must include 1 (MANUAL_SENSOR), 2 (MANUAL_POST_PROCESSING) and 3 (RAW) for L Camera to work.
+
 ### Why do I get the 'Cannot parse package' error while installing?
-Make sure the downloaded apk is not corrupted, as it seems some browsers download GitHub's webpage instead of the actual apk. You must also have the latest Lollipop preview (LPX13D) running on your Nexus 5.
+Make sure the downloaded apk is not corrupted, as it seems some browsers download GitHub's webpage instead of the actual apk. You must also have the Lollipop running on your Nexus 5.
 
 ### Does it need root?
 No. However, it is needed if you want to record videos at 60fps as a system library needs to be modified.
