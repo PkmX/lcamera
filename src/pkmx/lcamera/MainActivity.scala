@@ -850,6 +850,18 @@ class MainActivity extends SActivity with Observable {
       dumpCameraInfo()
     }
 
+    val capabilities = characteristics.get(REQUEST_AVAILABLE_CAPABILITIES)
+    val requiredCapabilities = List(
+      REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR,
+      REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING,
+      REQUEST_AVAILABLE_CAPABILITIES_RAW)
+
+    if (!(requiredCapabilities forall { capabilities contains _ })) {
+      toast("L Camera is not supported on your device")
+      finish()
+      return
+    }
+
     contentView = new SRelativeLayout {
       += (textureView.<<.alignParentLeft.alignParentTop.alignParentBottom.leftOf(captureButton).>>)
       += (toolbar.<<.fw.alignParentLeft.leftOf(captureButton).alignParentBottom.>>)
