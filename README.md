@@ -56,14 +56,14 @@ First, see [pkmx/lcamera#4](https://github.com/PkmX/lcamera/issues/4#issuecommen
 
 To enable 60fps recording, a system library `/system/lib/libmmcamera_imx179.so` needs to be replaced with a modified version. The following is a simplified walkthrough of the process. *Note that this is a very hacky solution and I'm not responsible for any damages done to your system or device. Approach at your own risk and make sure you understand what you are doing.*
 
-1. You must have root access and busybox installed on your Nexus 5. (The latter is not strictly required, but makes the process easier as it provides `install` and `pidof`.)
-2. Download `libmmcamera_imx179_lpx13d_60hz.so` in the repository and transfer it to the device. (The following assumes that it is located in `/sdcard/`.)
+1. You must have root access and busybox installed on your Nexus 5. (The latter is not strictly required, but makes the process easier as it provides `install` and `killall`.)
+2. Download `libmmcamera_imx179_lrx21o.so` in the repository and transfer it to the device. (The following assumes that it is located in `/sdcard/`.)
 3. Launch a root shell.
 4. Make a backup of the original library first: `cp /system/lib/libmmcamera_imx179.so /sdcard/libmmcamera_imx179_original.so`
 5. Run `mount -o remount,rw /system` to re-mount the `/system` partition for read-write.
-6. Replace the library: `install -m644 /sdcard/libmmcamera_imx179_lpx13d_60hz.so /system/lib/libmmcamera_imx179.so`
+6. Replace the library: `install -m644 /sdcard/libmmcamera_imx179_lrx21o_60hz.so /system/lib/libmmcamera_imx179.so`
 7. Run `mount -o remount,ro /system` to re-mount `/system` as read-only again.
-8. Restart both the camera daemon and media server: `kill $(pidof mm-qcamera-daemon) $(pidof mediaserver)`
+8. Restart both the camera daemon and media server: `killall mm-qcamera-daemon mediaserver`
 
 The camera should now be able to record at 60fps and you can choose 60fps options in the settings menu on L Camera. All other camera apps will most likely be broken at this point. If you want to undo the modification, simply redo step 5~8 and copy the original library you backup-ed in step 4 instead.
 
