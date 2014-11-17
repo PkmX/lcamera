@@ -6,7 +6,13 @@
 
 *Please note that this app is intended to test and study new features of the camera API, it is not for general uses as it lacks many basic camera features (location tagging, white balance, photo review, flash control, etc).*
 
-[See what you can achieve on the Nexus 5 with the new API](http://imgur.com/a/qQkkR#0).
+[See what you can achieve on the Nexus 5 with the new API](http://imgur.com/a/qQkkR).
+
+[See how the new API can greatly enhance low-light photography with the right settings and tools](http://imgur.com/a/ftvBH).
+
+Check out some 60-fps video recording samples: [1](https://www.youtube.com/watch?v=T6D1Qu7Q23o) [2](https://www.youtube.com/watch?v=kTL3FfGV2k4).
+
+Slow motion video recorded with a Nexus 5: https://www.youtube.com/watch?v=iKAvN-x53jM
 
 ## Features
 
@@ -50,6 +56,8 @@ After capturing, output files will be saved to the `/sdcard/DCIM/Camera/` direct
 ### Working with DNG files
 
 Most RAW post-processing programs should be able to open them. While Adobe Lightroom is probably the most popular RAW editor, both [darktable](http://www.darktable.org/) (Linux, Mac) and [RawTherapee](http://rawtherapee.com/) (Windows, Linux, Mac) are both free alternatives that also offer very powerful editing capabilities.
+
+[A short DNG editing tutorial using RawTherapee](http://imgur.com/a/ZpEPP#0).
 
 ### 60 FPS Recording
 First, see [pkmx/lcamera#4](https://github.com/PkmX/lcamera/issues/4#issuecomment-61356241) for limitations of this modification.
