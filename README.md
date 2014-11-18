@@ -27,7 +27,7 @@ Slow motion video recorded with a Nexus 5: https://www.youtube.com/watch?v=iKAvN
 
 ## Installation
 
-You can either install the pre-built debug APK ([`lcamera-debug.apk`](lcamera-debug.apk?raw=true)) found in the repository, or build and install the APK by yourself.
+You can either install the pre-built debug APK from the [release](https://github.com/PkmX/lcamera/releases) page, or build and install the APK by yourself.
 
 ## Usage
 
@@ -65,7 +65,7 @@ First, see [pkmx/lcamera#4](https://github.com/PkmX/lcamera/issues/4#issuecommen
 To enable 60fps recording, a system library `/system/lib/libmmcamera_imx179.so` needs to be replaced with a modified version. The following is a simplified walkthrough of the process. *Note that this is a very hacky solution and I'm not responsible for any damages done to your system or device. Approach at your own risk and make sure you understand what you are doing.*
 
 1. You must have root access and busybox installed on your Nexus 5. (The latter is not strictly required, but makes the process easier as it provides `install` and `killall`.)
-2. Download `libmmcamera_imx179_lrx21o.so` in the repository and transfer it to the device. (The following assumes that it is located in `/sdcard/`.)
+2. Download `libmmcamera_imx179_lrx21o.so` from the [release](https://github.com/PkmX/lcamera/releases) page and transfer it to the device. (The following assumes that it is located in `/sdcard/`.)
 3. Launch a root shell.
 4. Make a backup of the original library first: `cp /system/lib/libmmcamera_imx179.so /sdcard/libmmcamera_imx179_original.so`
 5. Run `mount -o remount,rw /system` to re-mount the `/system` partition for read-write.
