@@ -173,6 +173,7 @@ class MainActivity extends SActivity with Observable {
   val videoConfigurations = List(
     new VideoConfiguration(3264, 2448, 30, 65000000),
     new VideoConfiguration(3264, 2448, 30, 35000000),
+    new VideoConfiguration(1920, 1080, 60, 16000000),
     new VideoConfiguration(1920, 1080, 30, 8000000),
     new VideoConfiguration(1600, 1200, 60, 16000000),
     new VideoConfiguration(1600, 1200, 30, 8000000),
