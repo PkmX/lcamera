@@ -22,7 +22,7 @@ Slow motion video recorded with a Nexus 5: https://www.youtube.com/watch?v=iKAvN
 * DNG output support
 * 30-fps full-resolution burst capture with focus stacking & exposure bracketing in DNG
 * 30-fps full-resolution video recording
-* Experimental 60-fps video recording at 720p
+* Experimental 60-fps video recording at 1080p
 * Material design
 
 ## Installation
