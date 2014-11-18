@@ -208,7 +208,7 @@ class MainActivity extends SActivity with Observable {
   val isoIndex = Var(0) // ISO 100
   val iso = isoIndex.map(isoMap)
   val autoIso = Var(100)
-  val exposureTimeMap = Vector[Double](1.2, 2, 4, 6, 8, 15, 30, 60, 100, 125, 250, 500, 750, 1000, 1500, 2000, 3000, 4000, 5000, 6000, 8000, 10000, 20000, 40000, 75000)
+  val exposureTimeMap = Vector[Double](1.2, 2, 4, 6, 8, 15, 30, 60, 100, 125, 250, 500, 750, 1000, 1500, 2000, 3000, 4000, 5000, 6000, 8000, 10000, 20000, 30000, 75000)
   val exposureTimeIndex = Var(7) // 1/60s
   val exposureTime = Rx { (1000000000.0 / exposureTimeMap(exposureTimeIndex())).toLong }
   val autoExposureTime = Var(1000000000l)
