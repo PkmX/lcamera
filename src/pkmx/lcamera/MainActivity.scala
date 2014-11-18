@@ -100,7 +100,7 @@ object Utils {
     setAudioSource(1) // MIC
     setOutputFormat(2) // MPEG_4
     setAudioEncodingBitRate(384000)
-    setAudioSamplingRate(44100)
+    setAudioSamplingRate(48000)
     setVideoSize(vc.width, vc.height)
     setVideoEncodingBitRate(vc.bitrate)
     setVideoFrameRate(vc.fps)
