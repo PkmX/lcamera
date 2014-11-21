@@ -161,7 +161,7 @@ class MainActivity extends SActivity with Observable {
   lazy val jpegSize = streamConfigurationMap.getOutputSizes(ImageFormat.JPEG).filter(_ < rawSize)(0)
   lazy val rawSize = streamConfigurationMap.getOutputSizes(ImageFormat.RAW_SENSOR)(0)
   lazy val minFrameDuration = streamConfigurationMap.getOutputMinFrameDuration(ImageFormat.RAW_SENSOR, rawSize)
-  lazy val rawFps = 1000000000 / minFrameDuration
+  lazy val rawFps = if (minFrameDuration != 0) 1000000000 / minFrameDuration else Int.MaxValue
   lazy val jpegImageReader = ImageReader.newInstance(jpegSize.getWidth, jpegSize.getHeight, ImageFormat.JPEG, 1)
   lazy val rawImageReader = ImageReader.newInstance(rawSize.getWidth, rawSize.getHeight, ImageFormat.RAW_SENSOR, 7)
   lazy val jpegSurface = jpegImageReader.getSurface
