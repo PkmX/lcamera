@@ -128,7 +128,7 @@ object Utils {
   }
 
   implicit class RichSize(size: Size) {
-    def <(rhs: Size) = size.getWidth < rhs.getWidth && size.getHeight < rhs.getHeight
+    def <=(rhs: Size) = size.getWidth <= rhs.getWidth && size.getHeight <= rhs.getHeight
   }
 
   sealed case class VideoConfiguration(width: Int, height: Int, fps: Int, bitrate: Int) {
@@ -158,7 +158,8 @@ class MainActivity extends SActivity with Observable {
   lazy val isoRange = characteristics.get(SENSOR_INFO_SENSITIVITY_RANGE)
   lazy val exposureTimeRange = characteristics.get(SENSOR_INFO_EXPOSURE_TIME_RANGE)
 
-  lazy val jpegSize = streamConfigurationMap.getOutputSizes(ImageFormat.JPEG).filter(_ < rawSize)(0)
+  lazy val yuvSizes = streamConfigurationMap.getOutputSizes(ImageFormat.YUV_420_888)
+  lazy val jpegSize = streamConfigurationMap.getOutputSizes(ImageFormat.JPEG).filter(_ <= rawSize)(0)
   lazy val rawSize = streamConfigurationMap.getOutputSizes(ImageFormat.RAW_SENSOR)(0)
   lazy val minFrameDuration = streamConfigurationMap.getOutputMinFrameDuration(ImageFormat.RAW_SENSOR, rawSize)
   lazy val rawFps = if (minFrameDuration != 0) 1000000000 / minFrameDuration else Int.MaxValue
@@ -171,6 +172,7 @@ class MainActivity extends SActivity with Observable {
   val saveDng = Var(true)
 
   val videoConfigurations = List(
+    new VideoConfiguration(4160, 3120, 30, 90000000),
     new VideoConfiguration(3264, 2448, 30, 65000000),
     new VideoConfiguration(3264, 2448, 30, 35000000),
     new VideoConfiguration(1920, 1080, 60, 16000000),
@@ -179,7 +181,10 @@ class MainActivity extends SActivity with Observable {
     new VideoConfiguration(1600, 1200, 30, 8000000),
     new VideoConfiguration(1280, 720, 60, 10000000),
     new VideoConfiguration(1280, 720, 30, 5000000))
-  lazy val availableVideoConfigurations = videoConfigurations filter { vc => new Size(vc.width, vc.height) < rawSize && vc.fps <= rawFps }
+  lazy val availableVideoConfigurations = videoConfigurations filter { vc =>
+    val size = new Size(vc.width, vc.height)
+    size <= rawSize && yuvSizes.contains(size) && vc.fps <= rawFps
+  }
   lazy val userVideoConfiguration = Var(videoConfigurations(0))
   lazy val videoConfiguration = Rx { if (availableVideoConfigurations contains userVideoConfiguration()) userVideoConfiguration() else availableVideoConfigurations(0) }
 
@@ -204,8 +209,8 @@ class MainActivity extends SActivity with Observable {
   val autoFocus = Var(true)
   val focusDistance = Var(0f)
   val autoExposure = Var(true)
-  val isoMap = Vector(100, 200, 300, 400, 600, 800, 1000, 1600, 2000, 3200, 4000, 6400, 8000, 10000)
-  val isoIndex = Var(0) // ISO 100
+  val isoMap = Vector(40, 50, 80, 100, 200, 300, 400, 600, 800, 1000, 1600, 2000, 3200, 4000, 6400, 8000, 10000)
+  val isoIndex = Var(3) // ISO 100
   val iso = isoIndex.map(isoMap)
   val autoIso = Var(100)
   val exposureTimeMap = Vector[Double](1.2, 2, 4, 6, 8, 15, 30, 60, 100, 125, 250, 500, 750, 1000, 1500, 2000, 3000, 4000, 5000, 6000, 8000, 10000, 20000, 30000, 75000)
@@ -227,7 +232,7 @@ class MainActivity extends SActivity with Observable {
 
     setSurfaceTextureListener(new TextureView.SurfaceTextureListener {
       override def onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
-        val textureSize = streamConfigurationMap.getOutputSizes(texture.getClass).filter(sz => sz < rawSize && sz < new Size(1920, 1080))(0)
+        val textureSize = streamConfigurationMap.getOutputSizes(texture.getClass).filter(sz => sz <= rawSize && sz <= new Size(1920, 1080))(0)
         texture.setDefaultBufferSize(textureSize.getWidth, textureSize.getHeight)
         debug(s"Surface texture available: $texture")
         previewSurface() = Option(new Surface(texture))
@@ -248,7 +253,7 @@ class MainActivity extends SActivity with Observable {
   val setPreviewTransform: Int => Unit = rotation => {
     if (textureView.isAvailable) {
       textureView.setTransform {
-        val textureSize = streamConfigurationMap.getOutputSizes(textureView.getSurfaceTexture.getClass).filter(sz => sz < rawSize && sz < new Size(1920, 1080))(0)
+        val textureSize = streamConfigurationMap.getOutputSizes(textureView.getSurfaceTexture.getClass).filter(sz => sz <= rawSize && sz <= new Size(1920, 1080))(0)
         val viewRect = new RectF(0, 0, textureView.width, textureView.height)
         val bufferRect = new RectF(0, 0, textureSize.getHeight, textureSize.getWidth)
         bufferRect.offset(viewRect.centerX - bufferRect.centerX, viewRect.centerY - bufferRect.centerY)
