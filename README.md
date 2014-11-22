@@ -85,7 +85,7 @@ It seems that none of those devices fully support the new API as of now (2014/11
 Make sure the downloaded apk is not corrupted, as it seems some browsers download GitHub's webpage instead of the actual apk. You must also have the Lollipop running on your device.
 
 ### Does it need root?
-No. However, it is needed if you want to record videos at 60fps as a system library needs to be modified.
+No. However, it is needed if you want to record videos at 60fps on the Nexus 5 as a system library needs to be modified.
 
 ### Will you implement feature X?
 Open an issue (one per feature please) on the tracker and I will see what I can do. However, the priority of development is investigating new ways to use the camera hardware rather than reimplement features that have been possible, or things that can be done in post-processing.
