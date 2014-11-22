@@ -302,6 +302,7 @@ class MainActivity extends SActivity with Observable {
   }
 
   lazy val toolbar = new SLinearLayout {
+    clickable = true
     backgroundColor = Color.parseColor("#fafafa")
     gravity = Gravity.CENTER
     visibility = View.INVISIBLE
@@ -414,6 +415,7 @@ class MainActivity extends SActivity with Observable {
   }
 
   lazy val afView = new SLinearLayout {
+    clickable = true
     backgroundColor = Color.parseColor("#fafafa")
     gravity = Gravity.CENTER
     visibility = View.INVISIBLE
@@ -440,6 +442,7 @@ class MainActivity extends SActivity with Observable {
   }.padding(16.dip, 0, 16.dip, 0)
 
   lazy val aeView = new SLinearLayout {
+    clickable = true
     backgroundColor = Color.parseColor("#fafafa")
     gravity = Gravity.CENTER
     visibility = View.INVISIBLE
@@ -490,6 +493,7 @@ class MainActivity extends SActivity with Observable {
   }
 
   lazy val burstView = new SLinearLayout {
+    clickable = true
     backgroundColor = Color.parseColor("#fafafa")
     gravity = Gravity.CENTER
     visibility = View.INVISIBLE
