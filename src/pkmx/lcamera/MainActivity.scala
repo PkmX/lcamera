@@ -172,7 +172,6 @@ class MainActivity extends SActivity with Observable {
   val saveDng = Var(true)
 
   val videoConfigurations = List(
-    new VideoConfiguration(4160, 3120, 30, 90000000),
     new VideoConfiguration(3840, 2160, 30, 65000000),
     new VideoConfiguration(3264, 2448, 30, 65000000),
     new VideoConfiguration(3264, 2448, 30, 35000000),
