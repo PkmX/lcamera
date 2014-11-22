@@ -45,7 +45,7 @@ Just use it like any camera! Tap the floating button on the left-bottom corner t
  * Burst: Control whether burst capturing is enabled. If enabled, the camera will capture 7 DNG images at maximum resolution at 30 fps. (Note that JPEG output is disabled during burst capturing.)
  * Focus Stacking: If enabled, the camera will capture a series of images ranging from infinity focus and to the nearest focus distance possible.
  * Exposure Bracketing: If enabled, the camera will capture a series of 7 images ranging from -3 to +3 EV of the standard expousre. (Only the shutter speed is varied, the ISO stays the same)
-* Photo/Video: Switch between photo capturing and video recording mode. The video is recorded at maximum resolution (3264x2448) at 30 fps (may be lower if you choose a slow shutter speed), encoded with H.264 at 65mbps for video and 44.1khz 320kbps AAC-LC for audio in MP4 container. Focus distance and exposure are adjustable during recording.
+* Photo/Video: Switch between photo capturing and video recording mode. The video is encoded with H.264/AVC for video and 44.1khz 320kbps AAC-LC for audio in MP4 container. Focus distance and exposure are adjustable during recording.
 * Settings
  * Video Resolution: Configurate video resolution, fps and encoding bitrate. (See below for 60fps recording)
  * Save DNG: Specify where the DNG output is saved. Note that the DNG output is still enabled in burst mode due to limitation of JPEG output.
