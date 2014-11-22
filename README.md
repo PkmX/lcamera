@@ -2,7 +2,7 @@
 
 ![Screenshot](screenshot.jpg?raw=true)
 
-**L Camera** is an open-source experimental camera app for Android L devices using the new `android.hardware.camera2` API. Currently, the only supported device is Nexus 5 running Android 5.0 Lollipop.
+**L Camera** is an open-source experimental camera app for Android L devices using the new `android.hardware.camera2` API. Currently, the only supported device is Nexus 5 and Nexus 6 running Android 5.0 Lollipop.
 
 *Please note that this app is intended to test and study new features of the camera API, it is not for general uses as it lacks many basic camera features (location tagging, white balance, photo review, flash control, etc).*
 
@@ -18,11 +18,12 @@ Slow motion video recorded with a Nexus 5: https://www.youtube.com/watch?v=iKAvN
 
 * True manual focus (adjustable focus distance)
 * Manual exposure time (0.8" to 1/75000)
-* Manual ISO (100 to 10000)
+* Manual ISO (40 to 10000)
 * DNG output support
 * 30-fps full-resolution burst capture with focus stacking & exposure bracketing in DNG
-* 30-fps full-resolution video recording
-* Experimental 60-fps video recording at 1080p
+* 30-fps full-resolution (3264x2448) video recording on Nexus 5
+* 30-fps 4K UHD (3840x2160) video recording on Nexus 6
+* Experimental 60-fps video recording at 1080p on Nexus 5
 * Material design
 
 ## Installation
@@ -60,11 +61,11 @@ Most RAW post-processing programs should be able to open them. While Adobe Light
 [A short DNG editing tutorial using RawTherapee](http://imgur.com/a/ZpEPP#0).
 
 ### 60 FPS Recording
-First, see [pkmx/lcamera#4](https://github.com/PkmX/lcamera/issues/4#issuecomment-61356241) for limitations of this modification.
+First, see [pkmx/lcamera#4](https://github.com/PkmX/lcamera/issues/4#issuecomment-61356241) for limitations of this modification. This modification is only available for Nexus 5.
 
 To enable 60fps recording, a system library `/system/lib/libmmcamera_imx179.so` needs to be replaced with a modified version. The following is a simplified walkthrough of the process. *Note that this is a very hacky solution and I'm not responsible for any damages done to your system or device. Approach at your own risk and make sure you understand what you are doing.*
 
-1. You must have root access and busybox installed on your Nexus 5. (The latter is not strictly required, but makes the process easier as it provides `install` and `killall`.)
+1. You must have root access and [busybox](https://play.google.com/store/apps/details?id=stericson.busybox) installed on your Nexus 5. (The latter is not strictly required, but makes the process easier as it provides `install` and `killall`.)
 2. Download `libmmcamera_imx179_lrx21o.so` from the [release](https://github.com/PkmX/lcamera/releases) page and transfer it to the device. (The following assumes that it is located in `/sdcard/`.)
 3. Launch a root shell.
 4. Make a backup of the original library first: `cp /system/lib/libmmcamera_imx179.so /sdcard/libmmcamera_imx179_original.so`
@@ -81,7 +82,7 @@ The camera should now be able to record at 60fps and you can choose 60fps option
 It seems that none of those devices fully support the new API as of now (2014/11/17). If you want to verify, enable verbose output outlined in the "Debugging" section below, and check the output from `logcat`. You should see a dump of your device cameras' capabilities like [this](https://gist.github.com/PkmX/fefff90bab3b6eb2847f) when L Camera is started. Your camera's `android.request.availableCapabilities` must include 1 (MANUAL_SENSOR), 2 (MANUAL_POST_PROCESSING) and 3 (RAW) for L Camera to work.
 
 ### Why do I get the 'Cannot parse package' error while installing?
-Make sure the downloaded apk is not corrupted, as it seems some browsers download GitHub's webpage instead of the actual apk. You must also have the Lollipop running on your Nexus 5.
+Make sure the downloaded apk is not corrupted, as it seems some browsers download GitHub's webpage instead of the actual apk. You must also have the Lollipop running on your device.
 
 ### Does it need root?
 No. However, it is needed if you want to record videos at 60fps as a system library needs to be modified.
@@ -123,7 +124,7 @@ Please report any bugs or feature requests on GitHub's issue tracker.
 
 ## Credits
 
-* Martin Wawro: for his support in enabling 60fps video recording
+* Martin Wawro: for his support in enabling 60fps video recording on Nexus 5
 
 ## License
 
