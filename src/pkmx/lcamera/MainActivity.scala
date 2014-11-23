@@ -891,6 +891,8 @@ class MainActivity extends SActivity with Observable {
       override def onImageAvailable(reader: ImageReader) { rawImages.write(reader.acquireNextImage()) }
     }, null)
 
+    getWindow.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
     val prefs = new Preferences(getSharedPreferences("lcamera", Context.MODE_PRIVATE))
     prefs.Boolean.autoFocus.foreach { autoFocus() = _ }
     prefs.Float.focusDistance.foreach { focusDistance() = _ }
