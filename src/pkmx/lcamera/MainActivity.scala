@@ -1,8 +1,10 @@
 package pkmx.lcamera
 
+
 import collection.JavaConversions._
 import java.io.{File, FileOutputStream}
 import java.text.DecimalFormat
+import java.util.concurrent.Semaphore
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.{Channel, ExecutionContext, Future}
 import scala.collection.immutable.Vector
@@ -194,6 +196,7 @@ class MainActivity extends SActivity with Observable {
   val camera = NoneVar[CameraDevice]
   val previewSurface = NoneVar[Surface]
   val previewSession = NoneVar[CameraCaptureSession]
+  val createCaptureSessionSemaphore = new Semaphore(1)
   val meteringRectangle = NoneVar[MeteringRectangle]
 
   sealed trait CaptureMode
@@ -303,13 +306,11 @@ class MainActivity extends SActivity with Observable {
 
             tasks foreach { _ onFailure { case NonFatal(e) => e.printStackTrace() } }
             tasks reduce { (_: Future[Any]) zip (_: Future[Any]) } onComplete { _ => runOnUiThread { capturing() = false } }
-            startPreview.trigger()
           }
 
           override def onCaptureFailed(session: CameraCaptureSession, request: CaptureRequest, failure: CaptureFailure) {
             debug("Capture failed")
             capturing() = false
-            startPreview.trigger()
           }
         }, null)
       }
@@ -523,7 +524,7 @@ class MainActivity extends SActivity with Observable {
       onClick {
         captureMode() = captureMode() match {
           case _: PhotoMode => new VideoMode
-          case _: VideoMode => new PhotoMode
+          case vm: VideoMode => vm.releaseRecorder() ; new PhotoMode
         }
       }
     }.<<(48.dip, 48.dip).marginLeft(16.dip).marginRight(16.dip).>>)
@@ -725,7 +726,6 @@ class MainActivity extends SActivity with Observable {
     observe { visibilityRx foreach { c => visibility = if (c) View.VISIBLE else View.INVISIBLE } }
   }
 
-  val manualFocusDistance = focusDistance.filter(_ => !this.autoFocus())
   val startPreview =
     for { (cameraOpt, previewSurfaceOpt, previewSessionOpt, autoFocus, focusDistance, autoExposure, iso, exposureTime, metering)
           <- Rx {(this.camera(), this.previewSurface(), this.previewSession(),
@@ -788,26 +788,32 @@ class MainActivity extends SActivity with Observable {
           camera <- cameraOpt
           surfaces <- surfacesOpt
     } {
-      debug(s"Creating preview session using $camera")
+      Future {
+        createCaptureSessionSemaphore.acquire()
+        debug(s"Creating preview session using $camera")
 
-      camera.createCaptureSession(surfaces, new CameraCaptureSession.StateCallback {
-        override def onConfigured(session: CameraCaptureSession) {
-          debug(s"Preview session configured: $session")
-        }
+        previewSession() foreach { _.close() }
+        previewSession() = None
+        runOnUiThread {
+          camera.createCaptureSession(surfaces, new CameraCaptureSession.StateCallback {
+            override def onConfigured(session: CameraCaptureSession) {
+              debug(s"Preview session configured: $session")
+              previewSession() = Option(session)
+              createCaptureSessionSemaphore.release()
+            }
 
-        override def onConfigureFailed(session: CameraCaptureSession) {
-          debug("Preview session configuration failed")
-        }
+            override def onConfigureFailed(session: CameraCaptureSession) {
+              debug("Preview session configuration failed")
+              createCaptureSessionSemaphore.release()
+            }
 
-        override def onClosed(session: CameraCaptureSession) {
-          debug(s"Preview session closed: $session")
-          previewSession() = None
+            override def onClosed(session: CameraCaptureSession) {
+              debug(s"Preview session closed: $session")
+              previewSession() = None
+            }
+          }, null)
         }
-
-        override def onReady(session: CameraCaptureSession) {
-          previewSession() = Option(session)
-        }
-      }, null)
+      }
     }
   }
 
