@@ -509,8 +509,8 @@ class MainActivity extends SActivity with Observable {
     += (new SImageView {
       observe { captureMode foreach {
         m => imageDrawable = m match {
-          case _: PhotoMode => R.drawable.ic_camera_black
-          case _: VideoMode => R.drawable.ic_video_black
+          case _: PhotoMode => R.drawable.ic_video_black
+          case _: VideoMode => R.drawable.ic_camera_black
       }}}
       val rxEnabled = Rx {
         captureMode() match {
