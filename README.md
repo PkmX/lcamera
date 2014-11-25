@@ -20,7 +20,7 @@ Slow motion video recorded with a Nexus 5: https://www.youtube.com/watch?v=iKAvN
 * Manual exposure time (0.8" to 1/75000)
 * Manual ISO (40 to 10000)
 * DNG output support
-* 30-fps full-resolution burst capture with focus stacking & exposure bracketing in DNG
+* 30-fps full-resolution burst capture with focus stacking & exposure bracketing
 * 30-fps full-resolution (3264x2448) video recording on Nexus 5
 * 30-fps 4K UHD (3840x2160) video recording on Nexus 6
 * Experimental 60-fps video recording at 1080p on Nexus 5
@@ -42,13 +42,14 @@ Just use it like any camera! Tap the floating button on the left-bottom corner t
  * Shutter Speed: Control the exposure time. (Setting a slow shutter speed will affect preview frame rate)
  * ISO: Control the sensitivity of the sensor.
 * Burst
- * Burst: Control whether burst capturing is enabled. If enabled, the camera will capture 7 DNG images at maximum resolution at 30 fps. (Note that JPEG output is disabled during burst capturing.)
+ * Burst: Control whether burst capturing is enabled. If enabled, the camera will capture 7 images at maximum resolution at 30 fps.
  * Focus Stacking: If enabled, the camera will capture a series of images ranging from infinity focus and to the nearest focus distance possible.
  * Exposure Bracketing: If enabled, the camera will capture a series of 7 images ranging from -3 to +3 EV of the standard expousre. (Only the shutter speed is varied, the ISO stays the same)
+ * DNG/JPEG: Specify the output format for burst capture.
 * Photo/Video: Switch between photo capturing and video recording mode. The video is encoded with H.264/AVC for video and 44.1khz 320kbps AAC-LC for audio in MP4 container. Focus distance and exposure are adjustable during recording.
 * Settings
  * Video Resolution: Configurate video resolution, fps and encoding bitrate. (See below for 60fps recording)
- * Save DNG: Specify where the DNG output is saved. Note that the DNG output is still enabled in burst mode due to limitation of JPEG output.
+ * Save DNG: Specify whether the DNG output is saved in single capture mode.
 
 If you are looking for a stopwatch to test the burst capture feature, check out [this jsfiddle](http://jsfiddle.net/jw2z5eeu/).
 
