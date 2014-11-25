@@ -3,6 +3,7 @@ package pkmx.lcamera
 
 import collection.JavaConversions._
 import java.io.{File, FileOutputStream}
+import java.nio.ByteBuffer
 import java.text.DecimalFormat
 import java.util.concurrent.Semaphore
 import scala.collection.mutable.ListBuffer
@@ -148,6 +149,12 @@ object Utils {
       obs
     }
   }
+
+  def byteBufferToByteArray(bb: ByteBuffer): Array[Byte] = {
+    val bytes = new Array[Byte](bb.remaining())
+    bb.get(bytes, 0, bb.remaining())
+    bytes
+  }
 }
 
 import Utils._
@@ -166,15 +173,24 @@ class MainActivity extends SActivity with Observable {
   lazy val yuvSizes = streamConfigurationMap.getOutputSizes(ImageFormat.YUV_420_888)
   lazy val jpegSize = streamConfigurationMap.getOutputSizes(ImageFormat.JPEG).filter(_ <= rawSize)(0)
   lazy val rawSize = streamConfigurationMap.getOutputSizes(ImageFormat.RAW_SENSOR)(0)
+  lazy val yuvSize = yuvSizes.filter(_ <= rawSize)(0)
   lazy val minFrameDuration = streamConfigurationMap.getOutputMinFrameDuration(ImageFormat.RAW_SENSOR, rawSize)
   lazy val rawFps = if (minFrameDuration != 0) 1000000000 / minFrameDuration else Int.MaxValue
   lazy val jpegImageReader = ImageReader.newInstance(jpegSize.getWidth, jpegSize.getHeight, ImageFormat.JPEG, 1)
   lazy val rawImageReader = ImageReader.newInstance(rawSize.getWidth, rawSize.getHeight, ImageFormat.RAW_SENSOR, 7)
+  lazy val yuvImageReader = ImageReader.newInstance(yuvSize.getWidth, yuvSize.getHeight, ImageFormat.YUV_420_888, 7)
   lazy val jpegSurface = jpegImageReader.getSurface
   lazy val rawSurface = rawImageReader.getSurface
+  lazy val yuvSurface = yuvImageReader.getSurface
   val jpegImages = new Channel[Image]
   val rawImages = new Channel[Image]
+  val yuvImages = new Channel[Image]
   val saveDng = Var(true)
+
+  sealed trait DngJpeg
+  case object Dng extends DngJpeg
+  case object Jpeg extends DngJpeg
+  val burstSaveDngJpeg = Var[DngJpeg](Jpeg)
 
   val videoConfigurations = List(
     new VideoConfiguration(3840, 2160, 30, 65000000),
@@ -216,7 +232,13 @@ class MainActivity extends SActivity with Observable {
         time.setToNow()
         val filePathBase = Utils.createPathIfNotExist(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + "/Camera/") + time.format("IMG_%Y%m%d_%H%M%S")
         val orientation = windowManager.getDefaultDisplay.getRotation
-        val targetSurfaces = if (burst() > 1) List(rawSurface) else if (saveDng()) List(previewSurface, jpegSurface, rawSurface) else List(previewSurface, jpegSurface)
+        val targetSurfaces =
+          if (burst() > 1)
+            burstSaveDngJpeg() match {
+              case Dng => List(rawSurface)
+              case Jpeg => List(yuvSurface)
+            }
+          else previewSurface :: (if (saveDng()) List(jpegSurface, rawSurface) else List(jpegSurface))
 
         val requests = for (n <- 0 to burst() - 1) yield {
           val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
@@ -258,8 +280,7 @@ class MainActivity extends SActivity with Observable {
         }
 
         val tasks = new ListBuffer[Future[Unit]]
-        var frameNumber = 0
-        val rawResults = new Channel[(String, TotalCaptureResult)]
+        val rawResults = new Channel[TotalCaptureResult]
 
         debug(s"Capturing with $previewSession")
         previewSession.captureBurst(requests, new CameraCaptureSession.CaptureCallback {
@@ -269,22 +290,21 @@ class MainActivity extends SActivity with Observable {
               s"iso = ${result.get(CaptureResult.SENSOR_SENSITIVITY)}/${request.get(SENSOR_SENSITIVITY)} " +
               s"exposure = ${result.get(CaptureResult.SENSOR_EXPOSURE_TIME)}/${request.get(SENSOR_EXPOSURE_TIME)}")
 
-            rawResults.write((if (burst() > 1) s"${filePathBase}_$frameNumber.dng" else s"$filePathBase.dng", result))
-            frameNumber += 1
+            if (targetSurfaces.contains(rawSurface)) { rawResults.write(result) }
           }
 
           override def onCaptureSequenceCompleted(session: CameraCaptureSession, sequenceId: Int, frameNumber: Long) {
             if (targetSurfaces.contains(jpegSurface)) {
               tasks += Future {
                 val image = jpegImages.read
-                val jpgFilePath = s"$filePathBase.jpg"
+                val filePath = s"$filePathBase.jpg"
                 val jpegBuffer = image.getPlanes()(0).getBuffer
                 val bytes = new Array[Byte](jpegBuffer.capacity)
                 jpegBuffer.get(bytes)
                 image.close()
-                new FileOutputStream(jpgFilePath).write(bytes)
-                MediaScannerConnection.scanFile(MainActivity.this, Array[String](jpgFilePath), null, null)
-                debug("JPEG saved")
+                new FileOutputStream(filePath).write(bytes)
+                MediaScannerConnection.scanFile(MainActivity.this, Array[String](filePath), null, null)
+                debug(s"JPEG saved: $filePath")
               }
             }
 
@@ -292,14 +312,35 @@ class MainActivity extends SActivity with Observable {
               tasks += Future {
                 for (n <- 1 to burst()) {
                   val image = rawImages.read
-                  val (filePath, result) = rawResults.read
+                  val result = rawResults.read
 
                   val dngCreator = new DngCreator(characteristics, result).setOrientation(orientation)
+                  val filePath = if (burst() > 1) s"${filePathBase}_$n.dng" else s"$filePathBase.dng"
                   dngCreator.writeImage(new FileOutputStream(filePath), image)
                   dngCreator.close()
                   image.close()
                   MediaScannerConnection.scanFile(MainActivity.this, Array[String](filePath), null, null)
-                  debug("DNG saved")
+                  debug(s"DNG saved: $filePath")
+                }
+              }
+            }
+
+            if (targetSurfaces.contains(yuvSurface)) {
+              tasks += Future {
+                for (n <- 1 to burst()) {
+                  val image: Image = yuvImages.read
+                  val bytes = List(0, 2) map { n => byteBufferToByteArray(image.getPlanes()(n).getBuffer) } reduceLeft { _ ++ _ }
+                  val yuvImage = new YuvImage(bytes, ImageFormat.NV21, image.getWidth, image.getHeight, null)
+
+                  val filePath = s"${filePathBase}_$n.jpg"
+                  val outputStream = new FileOutputStream(filePath)
+                  val rect = new Rect(0, 0, image.getWidth, image.getHeight)
+                  debug(s"${rect.width} ${rect.height}")
+                  yuvImage.compressToJpeg(rect, 100, outputStream)
+                  image.close()
+                  outputStream.close()
+                  MediaScannerConnection.scanFile(MainActivity.this, Array[String](filePath), null, null)
+                  debug(s"JPEG saved: $filePath")
                 }
               }
             }
@@ -681,18 +722,32 @@ class MainActivity extends SActivity with Observable {
     }.padding(8.dip, 16.dip, 8.dip, 16.dip).wrap)
 
     += (new SCheckBox {
-      text = "Focus Stacking"
+      text = "Focus Stack"
       observe { focusStacking foreach { setChecked } }
       observe { burst foreach { n => enabled = n > 1} }
       onCheckedChanged { (v: View, checked: Boolean) => focusStacking() = checked }
     })
 
     += (new SCheckBox {
-      text = "Exposure Bracketing"
+      text = "Exposure Bracket"
       observe { exposureBracketing foreach { setChecked } }
       observe { burst foreach { n => enabled = n > 1} }
       onCheckedChanged { (v: View, checked: Boolean) => exposureBracketing() = checked }
     })
+
+    += (new STextView {
+      observe { burstSaveDngJpeg foreach {
+        case Dng => text = "DNG"
+        case Jpeg => text = "JPEG"
+      }}
+      observe { Rx { burst() > 1 } foreach {
+        en => enabled = en
+        textColor = Color.parseColor(if (en) "#4285f4" else "#d0d0d0")
+      }}
+      typeface = Typeface.DEFAULT_BOLD
+      textSize = 16.sp
+      onClick { burstSaveDngJpeg() = burstSaveDngJpeg() match { case Dng => Jpeg ; case Jpeg => Dng } }
+    }.padding(16.dip, 16.dip, 8.dip, 16.dip).wrap)
   }
 
   lazy val fabSize = 40.dip
@@ -778,6 +833,7 @@ class MainActivity extends SActivity with Observable {
     val rxSurfaces = Rx {
       previewSurface() flatMap { previewSurface =>
         captureMode() match {
+          case _: PhotoMode if burst() > 1 && burstSaveDngJpeg() == Jpeg => Some(List(previewSurface, yuvSurface))
           case _: PhotoMode => Some(List(previewSurface, jpegSurface, rawSurface))
           case vm: VideoMode => vm.videoSurface() map { List(previewSurface, _) }
         }
@@ -950,6 +1006,10 @@ class MainActivity extends SActivity with Observable {
       override def onImageAvailable(reader: ImageReader) { rawImages.write(reader.acquireNextImage()) }
     }, null)
 
+    yuvImageReader.setOnImageAvailableListener(new OnImageAvailableListener {
+      override def onImageAvailable(reader: ImageReader) { yuvImages.write(reader.acquireNextImage()) }
+    }, null)
+
     getWindow.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
     val prefs = new Preferences(getSharedPreferences("lcamera", Context.MODE_PRIVATE))
@@ -970,6 +1030,7 @@ class MainActivity extends SActivity with Observable {
         userVideoConfiguration() = vc
     }
     prefs.Boolean.saveDng.foreach { saveDng() = _ }
+    prefs.Boolean.burstSaveDngJpeg.foreach { b => burstSaveDngJpeg() = if (b) Dng else Jpeg }
 
     orientationEventListener.enable()
   }
@@ -1028,6 +1089,7 @@ class MainActivity extends SActivity with Observable {
     prefs.vcFps = userVideoConfiguration().fps
     prefs.vcBitrate = userVideoConfiguration().bitrate
     prefs.saveDng = saveDng()
+    prefs.burstSaveDngJpeg = burstSaveDngJpeg() match { case Dng => true ; case Jpeg => false }
   }
 
   override def onBackPressed() {
