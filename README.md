@@ -62,7 +62,7 @@ Most RAW post-processing programs should be able to open them. While Adobe Light
 [A short DNG editing tutorial using RawTherapee](http://imgur.com/a/ZpEPP#0).
 
 ### 60 FPS Recording
-First, see [pkmx/lcamera#4](https://github.com/PkmX/lcamera/issues/4#issuecomment-61356241) for limitations of this modification. This modification is only available for Nexus 5.
+First, see [pkmx/lcamera#4](https://github.com/PkmX/lcamera/issues/4#issuecomment-61356241) about limitations of this modification. This modification is only available for Nexus 5.
 
 To enable 60fps recording, a system library `/system/lib/libmmcamera_imx179.so` needs to be replaced with a modified version. The following is a simplified walkthrough of the process. *Note that this is a very hacky solution and I'm not responsible for any damages done to your system or device. Approach at your own risk and make sure you understand what you are doing.*
 
@@ -76,6 +76,8 @@ To enable 60fps recording, a system library `/system/lib/libmmcamera_imx179.so` 
 8. Restart both the camera daemon and media server: `killall mm-qcamera-daemon mediaserver`
 
 The camera should now be able to record at 60fps and you can choose 60fps options in the settings menu on L Camera. All other camera apps will most likely be broken at this point. If you want to undo the modification, simply redo step 5~8 and copy the original library you backup-ed in step 4 instead.
+
+For details about the library modification and a utility to patch your own, see contents of the `libmmcamera_imx179_mod` directory.
 
 ## FAQ
 
