@@ -215,7 +215,8 @@ class MainActivity extends SActivity with Observable {
     new VideoConfiguration(1600, 1200, 60, 16000000),
     new VideoConfiguration(1600, 1200, 30, 8000000),
     new VideoConfiguration(1280, 720, 60, 10000000),
-    new VideoConfiguration(1280, 720, 30, 5000000))
+    new VideoConfiguration(1280, 720, 30, 5000000),
+    new VideoConfiguration(800, 600, 120, 5000000))
   lazy val availableVideoConfigurations = videoConfigurations filter { vc =>
     val size = new Size(vc.width, vc.height)
     size <= rawSize && yuvSizes.contains(size) && vc.fps <= rawFps
