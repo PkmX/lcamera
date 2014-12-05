@@ -99,8 +99,9 @@ object Utils {
     var realFilePath = tmpFilePath
 
     setVideoSource(2) // SURFACE
-    setAudioSource(1) // MIC
+    setAudioSource(5) // CAMCORDER
     setOutputFormat(2) // MPEG_4
+    setAudioChannels(2)
     setAudioEncodingBitRate(384000)
     setAudioSamplingRate(44100)
     setVideoSize(vc.width, vc.height)
