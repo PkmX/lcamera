@@ -24,6 +24,7 @@ Slow motion video recorded with a Nexus 5: https://www.youtube.com/watch?v=iKAvN
 * 30-fps full-resolution (3264x2448) video recording on Nexus 5
 * 30-fps 4K UHD (3840x2160) video recording on Nexus 6
 * Experimental 60-fps video recording at 1080p on Nexus 5
+* Experimental 120-fps video recording at 800x600 on Nexus 5
 * Material design
 
 ## Installation
@@ -61,21 +62,21 @@ Most RAW post-processing programs should be able to open them. While Adobe Light
 
 [A short DNG editing tutorial using RawTherapee](http://imgur.com/a/ZpEPP#0).
 
-### 60 FPS Recording
+### 60/120 FPS Recording
 First, see [pkmx/lcamera#4](https://github.com/PkmX/lcamera/issues/4#issuecomment-61356241) about limitations of this modification. This modification is only available for Nexus 5.
 
-To enable 60fps recording, a system library `/system/lib/libmmcamera_imx179.so` needs to be replaced with a modified version. The following is a simplified walkthrough of the process. *Note that this is a very hacky solution and I'm not responsible for any damages done to your system or device. Approach at your own risk and make sure you understand what you are doing.*
+To enable 60/120fps recording, the system library `/system/lib/libmmcamera_imx179.so` needs to be replaced with a modified version. The following is a simplified walkthrough of the process. *Note that this is a very hacky solution and I'm not responsible for any damages done to your system or device. Approach at your own risk and make sure you understand what you are doing.*
 
 1. You must have root access and [busybox](https://play.google.com/store/apps/details?id=stericson.busybox) installed on your Nexus 5. (The latter is not strictly required, but makes the process easier as it provides `install` and `killall`.)
-2. Download `libmmcamera_imx179_lrx21o.so` from the [release](https://github.com/PkmX/lcamera/releases) page and transfer it to the device. (The following assumes that it is located in `/sdcard/`.)
+2. Download the `libmmcamera_imx179_lrx21o_60hz.so` or ``libmmcamera_imx179_lrx21o_120hz.so` from the [release](https://github.com/PkmX/lcamera/releases) page and transfer it to the device. (The following assumes that it is located in `/sdcard/`.)
 3. Launch a root shell.
 4. Make a backup of the original library first: `cp /system/lib/libmmcamera_imx179.so /sdcard/libmmcamera_imx179_original.so`
 5. Run `mount -o remount,rw /system` to re-mount the `/system` partition for read-write.
-6. Replace the library: `install -m644 /sdcard/libmmcamera_imx179_lrx21o_60hz.so /system/lib/libmmcamera_imx179.so`
+6. Replace the library: `install -m644 /sdcard/libmmcamera_imx179_lrx21o_60hz.so /system/lib/libmmcamera_imx179.so` (Replace `60hz` with `120hz` if you downloaded the 120fps one.)
 7. Run `mount -o remount,ro /system` to re-mount `/system` as read-only again.
 8. Restart both the camera daemon and media server: `killall mm-qcamera-daemon mediaserver`
 
-The camera should now be able to record at 60fps and you can choose 60fps options in the settings menu on L Camera. All other camera apps will most likely be broken at this point. If you want to undo the modification, simply redo step 5~8 and copy the original library you backup-ed in step 4 instead.
+The camera should now be able to record at 60/120 fps and you can choose 60/120fps options in the settings menu on L Camera. All other camera apps will most likely be broken at this point. If you want to undo the modification, simply redo step 5~8 and copy the original library you backup-ed in step 4 instead.
 
 For details about the library modification and a utility to patch your own, see contents of the `libmmcamera_imx179_mod` directory.
 
