@@ -942,7 +942,10 @@ class MainActivity extends SActivity with Observable {
 
   observe { camera foreach { c => if (!c.isDefined) {
     captureMode() match {
-      case vm: VideoMode => if (vm.recording()) vm.stopRecording()
+      case vm: VideoMode =>
+        if (vm.recording()) vm.stopRecording()
+        vm.releaseRecorder()
+        captureMode() = new PhotoMode
       case _ =>
     }
   }}}
