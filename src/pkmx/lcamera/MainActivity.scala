@@ -1,6 +1,5 @@
 package pkmx.lcamera
 
-
 import collection.JavaConversions._
 import java.io.{File, FileOutputStream}
 import java.nio.ByteBuffer
@@ -13,9 +12,10 @@ import scala.language.{existentials, implicitConversions}
 import scala.util.control.NonFatal
 
 import android.animation._
-import android.content.{DialogInterface, Context}
+import android.content.{Intent, DialogInterface, Context}
 import android.graphics._
 import android.graphics.drawable.ColorDrawable
+import android.hardware.Camera.{ACTION_NEW_PICTURE, ACTION_NEW_VIDEO}
 import android.hardware.camera2._
 import android.hardware.camera2.CameraCharacteristics._
 import android.hardware.camera2.CameraMetadata._
@@ -23,6 +23,8 @@ import android.hardware.camera2.CaptureRequest._
 import android.hardware.camera2.params._
 import android.media.{MediaRecorder, Image, MediaScannerConnection, ImageReader}
 import android.media.ImageReader.OnImageAvailableListener
+import android.media.MediaScannerConnection.OnScanCompletedListener
+import android.net.Uri
 import android.os._
 import android.text.format.Time
 import android.view._
@@ -154,6 +156,18 @@ object Utils {
     val bytes = new Array[Byte](bb.remaining())
     bb.get(bytes, 0, bb.remaining())
     bytes
+  }
+
+  def mediaScan(filePath: String, action: String)(implicit ctx: Context) {
+    MediaScannerConnection.scanFile(ctx, Array(filePath), null, new OnScanCompletedListener {
+      override def onScanCompleted(path: String, uri: Uri) {
+        if (uri != null) {
+          ctx.sendBroadcast(new Intent(action, uri))
+        } else {
+          ctx.sendBroadcast(new Intent(action, Uri.fromFile(new File(path))))
+        }
+      }
+    })
   }
 }
 
@@ -303,7 +317,7 @@ class MainActivity extends SActivity with Observable {
                 jpegBuffer.get(bytes)
                 image.close()
                 new FileOutputStream(filePath).write(bytes)
-                MediaScannerConnection.scanFile(MainActivity.this, Array[String](filePath), null, null)
+                mediaScan(filePath, ACTION_NEW_PICTURE)
                 debug(s"JPEG saved: $filePath")
               }
             }
@@ -319,7 +333,7 @@ class MainActivity extends SActivity with Observable {
                   dngCreator.writeImage(new FileOutputStream(filePath), image)
                   dngCreator.close()
                   image.close()
-                  MediaScannerConnection.scanFile(MainActivity.this, Array[String](filePath), null, null)
+                  mediaScan(filePath, ACTION_NEW_PICTURE)
                   debug(s"DNG saved: $filePath")
                 }
               }
@@ -339,7 +353,7 @@ class MainActivity extends SActivity with Observable {
                   yuvImage.compressToJpeg(rect, 100, outputStream)
                   image.close()
                   outputStream.close()
-                  MediaScannerConnection.scanFile(MainActivity.this, Array[String](filePath), null, null)
+                  mediaScan(filePath, ACTION_NEW_PICTURE)
                   debug(s"JPEG saved: $filePath")
                 }
               }
@@ -391,7 +405,7 @@ class MainActivity extends SActivity with Observable {
         try {
           mr.stop()
           renameFile(MyMediaRecorder.tmpFilePath, mr.realFilePath)
-          MediaScannerConnection.scanFile(MainActivity.this, Array[String](mr.realFilePath), null, null)
+          mediaScan(mr.realFilePath, ACTION_NEW_VIDEO)
         } catch {
           case e: RuntimeException => new File(MyMediaRecorder.tmpFilePath).delete()
         }
