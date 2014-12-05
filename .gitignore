@@ -3,3 +3,4 @@ gen/
 .idea
 .idea_modules
 target/
+libmmcamera_imx179_mod/imx179_patch
