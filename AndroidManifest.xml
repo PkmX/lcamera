@@ -11,10 +11,10 @@
 
     <application android:label="L Camera"
                  android:icon="@drawable/ic_launcher"
-                 android:theme="@android:style/Theme.Material.Light.NoActionBar.Fullscreen"
+                 android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen"
                  android:allowBackup="true">
         <activity android:name=".MainActivity"
-                  android:screenOrientation="sensorLandscape">
+                  android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>

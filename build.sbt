@@ -13,7 +13,8 @@ libraryDependencies ++= Seq(
   "org.scaloid" %% "scaloid" % "3.6.1-10",
   "com.scalarx" %% "scalarx" % "0.2.6",
   "com.typesafe.akka" %% "akka-actor" % "2.3.6",
-  "com.melnykov" % "floatingactionbutton" % "1.0.6"
+  "com.melnykov" % "floatingactionbutton" % "1.0.6",
+  "com.github.rahatarmanahmed" % "circularprogressview" % "1.0.0"
 )
 
 platformTarget in Android := "android-21"

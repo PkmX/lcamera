@@ -1,18 +1,20 @@
 package pkmx.lcamera
 
+import org.scaloid.common
+
 import collection.JavaConversions._
 import java.io.{File, FileOutputStream}
 import java.nio.ByteBuffer
 import java.text.DecimalFormat
 import scala.concurrent.{Promise, Channel, ExecutionContext, Future}
 import scala.collection.immutable.Vector
-import scala.language.{existentials, higherKinds, implicitConversions, reflectiveCalls}
+import scala.language.{existentials, implicitConversions, reflectiveCalls}
 import scala.util.control.NonFatal
 
 import android.animation._
 import android.content.{Intent, DialogInterface, Context}
 import android.graphics._
-import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.{Drawable, ColorDrawable}
 import android.hardware.Camera.{ACTION_NEW_PICTURE, ACTION_NEW_VIDEO}
 import android.hardware.camera2._
 import android.hardware.camera2.CameraCharacteristics._
@@ -33,6 +35,7 @@ import android.widget.ImageView.ScaleType
 import android.util.{Log, Size}
 
 import com.melnykov.fab.FloatingActionButton
+import com.github.rahatarmanahmed.cpv.CircularProgressView
 import org.scaloid.common._
 import rx._
 import rx.ops._
@@ -45,26 +48,20 @@ object Utils {
 
   type Fab = FloatingActionButton
 
-  val circularReveal = (v: View, cx: Int, cy: Int, r: Int) => {
-    val anim = ViewAnimationUtils.createCircularReveal(v, cx, cy, 0, r)
-    anim.addListener(new AnimatorListenerAdapter() {
-      override def onAnimationStart(animator: Animator) {
-        super.onAnimationStart(animator)
-        v.visibility = View.VISIBLE
-      }
+  val slideUpShow = (v: View) => {
+    v.startAnimation(new TranslateAnimation(
+      Animation.RELATIVE_TO_SELF, 0,
+      Animation.RELATIVE_TO_SELF, 0,
+      Animation.RELATIVE_TO_SELF, 1,
+      Animation.RELATIVE_TO_SELF, 0) {
+      setDuration(300)
+      setAnimationListener(new AnimationListener {
+        override def onAnimationEnd(anim: Animation) { v.visibility = View.VISIBLE }
+        override def onAnimationStart(anim: Animation) {}
+        override def onAnimationRepeat(anim: Animation) {}
+      })
     })
-    anim
-  }
-
-  val circularHide = (v: View, cx: Int, cy: Int, r: Int) => {
-    val anim = ViewAnimationUtils.createCircularReveal(v, cx, cy, r, 0)
-    anim.addListener(new AnimatorListenerAdapter() {
-      override def onAnimationEnd(animator: Animator) {
-        super.onAnimationEnd(animator)
-        v.visibility = View.INVISIBLE
-      }
-    })
-    anim
+    v.enable()
   }
 
   val slideDownHide = (v: View) => {
@@ -80,12 +77,31 @@ object Utils {
         override def onAnimationRepeat(anim: Animation) {}
       })
     })
+    v.disable()
   }
 
   def NoneVar[T] = Var[Option[T]](None)
 
-  class STextureView(implicit ctx: Context) extends TextureView(ctx) with TraitView[TextureView] {
+  class STextureView(implicit ctx: Context, loggerTag: LoggerTag) extends TextureView(ctx) with TraitView[TextureView] {
     val basis = this
+
+    private[this] val surfaceTextureVar = NoneVar[SurfaceTexture]
+    def surfaceTexture: Rx[Option[SurfaceTexture]] = surfaceTextureVar
+
+    setSurfaceTextureListener(new TextureView.SurfaceTextureListener {
+      override def onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
+        debug(s"Surface texture available: $texture")
+        surfaceTextureVar() = Option(texture)
+      }
+
+      override def onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) = onSurfaceTextureAvailable _
+      override def onSurfaceTextureUpdated(st: SurfaceTexture) {}
+      override def onSurfaceTextureDestroyed(st: SurfaceTexture) = {
+        debug("Surface texture destroyed")
+        surfaceTextureVar() = None
+        true
+      }
+    })
   }
 
   class SSwitch(implicit ctx: Context) extends Switch(ctx) with TraitCompoundButton[Switch] {
@@ -253,6 +269,13 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
     protected[this] val session: CameraCaptureSession
     protected[this] val previewSurface: Surface
 
+    val lastFocusDistanceVar = Var(0.0f)
+    val lastExposureTimeVar = Var(1000000000l)
+    val lastIsoVar = Var(100)
+    def lastFocusDistance: Rx[Float] = lastFocusDistanceVar
+    def lastExposureTime: Rx[Long] = lastExposureTimeVar
+    def lastIso: Rx[Int] = lastIsoVar
+
     protected[this] def setupRequest(request: CaptureRequest.Builder, focus: Focus, exposure: Exposure) {
       request.set(CONTROL_MODE, CONTROL_MODE_AUTO)
       focus match {
@@ -280,7 +303,13 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
       setupRequest(request, focus, exposure)
 
       request.addTarget(previewSurface)
-      session.setRepeatingRequest(request.build(), null, null)
+      session.setRepeatingRequest(request.build(), new CameraCaptureSession.CaptureCallback {
+        override def onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
+          lastFocusDistanceVar() = result.get(CaptureResult.LENS_FOCUS_DISTANCE)
+          lastExposureTimeVar() = result.get(CaptureResult.SENSOR_EXPOSURE_TIME)
+          lastIsoVar() = result.get(CaptureResult.SENSOR_SENSITIVITY)
+        }
+      }, null)
     }
 
     def triggerMetering(mr: MeteringRectangle, focus: Focus, exposure: Exposure) {
@@ -606,10 +635,23 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
   }
 }
 
+object Colors {
+  val blueA400 = Color.rgb(0x29, 0x79, 0xff)
+  val grey300 = Color.rgb(0xe0, 0xe0, 0xe0)
+  val grey600 = Color.rgb(0x75, 0x75, 0x75)
+  val grey800 = Color.rgb(0x42, 0x42, 0x42)
+  val orange500 = Color.rgb(0xff, 0x98, 0x00)
+  val holoRed = Color.rgb(0xff, 0x44, 0x44)
+  val holoGreen = Color.rgb(0x99, 0xcc, 0x00)
+  val holoBlue = Color.rgb(0x33, 0xb5, 0xe5)
+  val holoYellow = Color.rgb(0xff, 0xbb, 0x33)
+}
+
 class MainActivity extends SActivity with Observable {
   import LCamera._
 
   override implicit val loggerTag = LoggerTag("lcamera")
+  val condensedTypeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
   implicit lazy val cameraManager = getSystemService(Context.CAMERA_SERVICE).asInstanceOf[CameraManager]
   val cameraId = Var("0")
   val lcamera = NoneVar[LCamera]
@@ -631,7 +673,7 @@ class MainActivity extends SActivity with Observable {
         matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.FILL)
         val scale = Math.max(textureView.width.toFloat / textureSize.getWidth, textureView.height.toFloat / textureSize.getHeight)
         matrix.postScale(scale, scale, viewRect.centerX, viewRect.centerY)
-        matrix.postRotate((rotation + 2) * 90, viewRect.centerX, viewRect.centerY)
+        matrix.postRotate(rotation * 90, viewRect.centerX, viewRect.centerY)
         matrix
       }
     }
@@ -641,6 +683,7 @@ class MainActivity extends SActivity with Observable {
   val burstCaptureRawYuv = Var[RawOrYuv](Yuv)
   val burst = Var(1)
   val exposureBracketing = Var(false)
+  val isBurstSession = Rx { lcamera() exists { camera => camera.captureSession() flatMap { _.toOption } exists { _.isInstanceOf[camera.BurstSession] } } }
 
   val autoFocus = Var(true)
   val focusDistance = Var(0f)
@@ -683,9 +726,6 @@ class MainActivity extends SActivity with Observable {
   val userVideoConfiguration = Var(videoConfigurations(0))
 
   lazy val textureView = new STextureView {
-    private[this] val surfaceTextureVar = NoneVar[SurfaceTexture]
-    def surfaceTexture: Rx[Option[SurfaceTexture]] = surfaceTextureVar
-
     onTouch((v, e) => {
       if (e.getActionMasked == MotionEvent.ACTION_DOWN) {
         lcamera() foreach { camera =>
@@ -711,28 +751,10 @@ class MainActivity extends SActivity with Observable {
         true
       } else false
     })
-
-    setSurfaceTextureListener(new TextureView.SurfaceTextureListener {
-      override def onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
-        debug(s"Surface texture available: $texture")
-        surfaceTextureVar() = Option(texture)
-      }
-
-      override def onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) = onSurfaceTextureAvailable _
-      override def onSurfaceTextureUpdated(st: SurfaceTexture) {}
-      override def onSurfaceTextureDestroyed(st: SurfaceTexture) = {
-        debug("Surface texture destroyed")
-        surfaceTextureVar() = None
-        true
-      }
-    })
   }
 
-  lazy val captureButton = new SImageButton {
-    val photoStandbyColor = Color.parseColor("#4285f4")
-    val capturingColor = Color.parseColor("#d0d0d0")
-    val videoStandbyColor = Color.parseColor("#99cc00")
-    val recordingColor = Color.parseColor("#ff4444")
+  lazy val captureButton = new Fab(ctx) with TraitImageButton[Fab] {
+    val basis = this
     def fadeTo(color: Int, drawable: Int) {
       imageDrawable = drawable
       val anim = ObjectAnimator.ofArgb(this, "backgroundColor", background.asInstanceOf[ColorDrawable].getColor, color)
@@ -743,7 +765,7 @@ class MainActivity extends SActivity with Observable {
       anim.start()
     }
 
-    backgroundColor = photoStandbyColor
+    backgroundColor = Colors.grey300
     scaleType = ScaleType.FIT_CENTER
     onClick { lcamera() foreach { camera => camera.captureSession() flatMap { _.toOption } match {
       case Some(ps: camera.PhotoSession) =>
@@ -774,7 +796,7 @@ class MainActivity extends SActivity with Observable {
         val requests = for (n <- 1 to 7) yield bs.Request(focus(), exposure(),
           bs.rawYuv match {
             case Raw => (result, image) => saveDngFile(s"${filePathBase}_$n.dng", camera.characteristics, result, image, orientation)
-            case Yuv => (result, image) => saveYuvAsJpeg(s"${filePathBase}_$n.jpg", image)// TODO
+            case Yuv => (result, image) => saveYuvAsJpeg(s"${filePathBase}_$n.jpg", image) // TODO
         })
 
         bs.burstCapture(requests.toList)
@@ -794,13 +816,13 @@ class MainActivity extends SActivity with Observable {
       Rx {
         lcamera() match {
           case Some(camera) => camera.captureSession() flatMap { _.toOption } match {
-            case Some(ps: camera.PhotoSession) => if (ps.capturing()) (capturingColor, R.drawable.ic_camera, false) else (photoStandbyColor, R.drawable.ic_camera, true)
-            case Some(bs: camera.BurstSession) => if (bs.capturing()) (capturingColor, R.drawable.ic_camera, false) else (photoStandbyColor, R.drawable.ic_camera, true)
-            case Some(bs: camera.BulbSession) => if (bs.capturing()) (recordingColor, R.drawable. ic_av_stop, true) else (photoStandbyColor, R.drawable.ic_camera, true)
-            case Some(vs: camera.VideoSession) => if (vs.recording()) (recordingColor, R.drawable.ic_av_stop, true) else (videoStandbyColor, R.drawable.ic_video, true)
-            case _ => (capturingColor, R.drawable.ic_camera, false) // FIXME
+            case Some(ps: camera.PhotoSession) => if (ps.capturing()) (Colors.grey300, R.drawable.ic_camera, false) else (Colors.blueA400, R.drawable.ic_camera, true)
+            case Some(bs: camera.BurstSession) => if (bs.capturing()) (Colors.grey300, R.drawable.ic_camera, false) else (Colors.holoBlue, R.drawable.ic_camera, true)
+            case Some(bs: camera.BulbSession)  => if (bs.capturing()) (Colors.holoRed, R.drawable.ic_av_stop, true) else (Colors.holoYellow, R.drawable.ic_bulb, true)
+            case Some(vs: camera.VideoSession) => if (vs.recording()) (Colors.holoRed, R.drawable.ic_av_stop, true) else (Colors.holoGreen, R.drawable.ic_video, true)
+            case _ => (Colors.grey300, R.drawable.ic_camera, false) // FIXME
           }
-          case _ => (capturingColor, R.drawable.ic_camera, false) // FIXME
+          case _ => (Colors.grey300, R.drawable.ic_camera, false) // FIXME
         }
       } foreach {
         case (color, icon, en) =>
@@ -810,296 +832,18 @@ class MainActivity extends SActivity with Observable {
     }
   }
 
-  lazy val toolbar = new SLinearLayout {
-    clickable = true
-    backgroundColor = Color.parseColor("#fafafa")
-    gravity = Gravity.CENTER
-    visibility = View.INVISIBLE
-    enabled = false
-
-    += (new STextView {
-      text = "Focus"
-      typeface = Typeface.DEFAULT_BOLD
-      textSize = 16.sp
-      onClick {
-        afView.enabled = true
-        circularReveal(afView, this.left + this.getWidth / 2, this.top + this.getHeight / 2, afView.width).start()
-      }
-    }.padding(16.dip, 16.dip, 16.dip, 16.dip).wrap)
-
-    += (new STextView {
-      text = "Exposure"
-      typeface = Typeface.DEFAULT_BOLD
-      textSize = 16.sp
-      onClick {
-        aeView.enabled = true
-        circularReveal(aeView, this.left + this.getWidth / 2, this.top + this.getHeight / 2, aeView.width).start()
-      }
-    }.padding(16.dip, 16.dip, 16.dip, 16.dip).wrap)
-
-    += (new STextView {
-      text = "Burst"
-      typeface = Typeface.DEFAULT_BOLD
-      textSize = 16.sp
-      onClick {
-        burstView.enabled = true
-        circularReveal(burstView, this.left + this.getWidth / 2, this.top + this.getHeight / 2, aeView.width).start()
-      }
-
-      observe { Rx { lcamera() match {
-        case Some(camera) => camera.captureSession() flatMap { _.toOption } match {
-          case Some(_: camera.PhotoSession) => true
-          case Some(_: camera.BurstSession) => true
-          case Some(_: camera.BulbSession) => false
-          case Some(_: camera.VideoSession) => false
-          case None => false
-        }
-        case None => false
-      } } foreach { enabled = _ } }
-    }.padding(16.dip, 16.dip, 16.dip, 16.dip).wrap)
-
-    += (new SImageView {
-      backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
-      observe { Rx { lcamera() match {
-        case Some(camera) => camera.captureSession() flatMap { _.toOption } match {
-          case Some(_: camera.PhotoSession | _: camera.BurstSession) => R.drawable.ic_bulb_black
-          case Some(_: camera.BulbSession) => R.drawable.ic_video_black
-          case Some(_: camera.VideoSession) => R.drawable.ic_camera_black
-          case None => R.drawable.ic_video_black // FIXME
-        }
-        case None => R.drawable.ic_video_black // FIXME
-      } } foreach { imageDrawable = _ } }
-      observe { Rx { lcamera() match {
-        case Some(camera) => camera.captureSession() flatMap { _.toOption } match {
-          case Some(ps: camera.PhotoSession) => !ps.capturing()
-          case Some(bs: camera.BurstSession) => !bs.capturing()
-          case Some(bs: camera.BulbSession) => !bs.capturing()
-          case Some(vs: camera.VideoSession) => !vs.recording()
-          case None => true
-        }
-        case None => false
-      } } foreach { enabled = _ } }
-      onClick {
-        for { camera <- lcamera() ; previewSurface <- previewSurface() } {
-          camera.captureSession() flatMap { _.toOption } match {
-            case Some(_: camera.PhotoSession | _: camera.BurstSession) => camera.openBulbSession(previewSurface)
-            case Some(_: camera.BulbSession) => camera.openVideoSession(previewSurface, userVideoConfiguration())
-            case Some(_: camera.VideoSession) => camera.openPhotoSession(previewSurface)
-            case None => camera.openVideoSession(previewSurface, userVideoConfiguration())
-          }
-        }
-      }
-    }.<<(48.dip, 48.dip).marginLeft(16.dip).marginRight(16.dip).>>)
-
-    += (new SImageView {
-      imageDrawable = R.drawable.ic_settings
-
-      onClick {
-        new AlertDialogBuilder {
-          setView(new SVerticalLayout {
-            += (new SLinearLayout {
-              +=(new STextView {
-                text = "Video Resolution"
-                typeface = Typeface.DEFAULT_BOLD
-              }.wrap.<<.Gravity(Gravity.LEFT).Weight(1.0f).marginRight(16.dip).>>)
-
-              +=(new STextView {
-                observe { userVideoConfiguration foreach { vc => text = vc.toString } }
-              }.wrap.<<.Gravity(Gravity.RIGHT).Weight(1.0f).marginLeft(16.dip).>>)
-
-              onClick {
-                new AlertDialogBuilder("Video Resolution") {
-                  val videoConfigurationAdapter: ArrayAdapter[VideoConfiguration] = new SArrayAdapter(videoConfigurations.toArray) {
-                    override def isEnabled(which: Int): Boolean = availableVideoConfigurations() contains videoConfigurations(which)
-
-                    override def getView(which: Int, convertView: View, parent: ViewGroup): View =
-                      new STextView {
-                        text = videoConfigurations(which).toString
-                        textColor = Color.parseColor { videoConfigurationAdapter.isEnabled(which) match {
-                          case true => if (videoConfigurations(which) == userVideoConfiguration()) "#4285f4" else "#000000"
-                          case false => "#d0d0d0"
-                        }}
-                        textSize = 16.sp
-                      }.padding(16.dip)
-                  }
-
-                  setAdapter(videoConfigurationAdapter, new DialogInterface.OnClickListener {
-                    override def onClick(dialog: DialogInterface, which: Int) { userVideoConfiguration() = videoConfigurations(which) }
-                  })
-                }.show()
-              }
-            }.padding(16.dip).fw)
-
-            += (new SLinearLayout {
-              +=(new STextView {
-                text = "Save DNG"
-                typeface = Typeface.DEFAULT_BOLD
-              }.wrap.<<.Gravity(Gravity.LEFT).Weight(1.0f).marginRight(16.dip).>>)
-
-              +=(new SSwitch {
-                observe { saveDng foreach setChecked }
-                onCheckedChanged { (v: View, checked: Boolean) => saveDng() = checked }
-              }.wrap.<<.Gravity(Gravity.RIGHT).Weight(1.0f).marginLeft(16.dip).>>)
-            }.padding(16.dip).fw)
-          }.fill)
-        }.show()
-      }
-    }.<<(48.dip, 48.dip).marginLeft(16.dip).marginRight(16.dip).>>)
-  }
-
-  lazy val afView = new SLinearLayout {
-    clickable = true
-    backgroundColor = Color.parseColor("#fafafa")
-    gravity = Gravity.CENTER
-    visibility = View.INVISIBLE
-    enabled = false
-
-    += (new STextView {
-      text = "Auto Focus"
-      typeface = Typeface.DEFAULT_BOLD
-      textSize = 16.sp
-    }.padding(8.dip, 16.dip, 8.dip, 16.dip).wrap)
-    += (new SSwitch {
-      observe { autoFocus.foreach(setChecked) }
-      onCheckedChanged { (v: View, checked: Boolean) => autoFocus() = checked }
-    }.padding(8.dip, 16.dip, 8.dip, 16.dip).wrap)
-    += (new SSeekBar {
-      observe { lcamera foreach { _ foreach { camera => max = (camera.minFocusDistance * 100).round } } }
-      observe { autoFocus foreach { af => enabled = !af } }
-      observe { focusDistance.foreach { fd => setProgress { (fd * 100).round } } }
-      onProgressChanged { (seekbar: SeekBar, value: Int, fromUser: Boolean) => {
-        if (fromUser)
-          focusDistance() = value.toFloat / 100
-      }}
-    }.padding(8.dip, 8.dip, 8.dip, 8.dip).fw)
-  }.padding(16.dip, 0, 16.dip, 0)
-
-  lazy val aeView = new SLinearLayout {
-    clickable = true
-    backgroundColor = Color.parseColor("#fafafa")
-    gravity = Gravity.CENTER
-    visibility = View.INVISIBLE
-    enabled = false
-
-    += (new STextView {
-      text = "Auto Exposure"
-      typeface = Typeface.DEFAULT_BOLD
-      textSize = 16.sp
-    }.padding(8.dip, 16.dip, 8.dip, 16.dip).wrap)
-
-    += (new SSwitch {
-      observe { autoExposure foreach setChecked }
-      onCheckedChanged { (v: CompoundButton, checked: Boolean) => autoExposure() = checked }
-    }.padding(8.dip, 16.dip, 8.dip, 16.dip).wrap)
-
-    sealed trait PrevNext
-    case object Prev extends PrevNext
-    case object Next extends PrevNext
-    def mkButton(pv: PrevNext, f: => Unit) = new SImageView {
-      backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
-      observe { autoExposure.foreach { ae =>
-        enabled = !ae
-        imageDrawable = (pv, ae) match {
-          case (Prev, false) => R.drawable.ic_navigation_previous_item
-          case (Prev, true) => R.drawable.ic_navigation_previous_item_disabled
-          case (Next, false) => R.drawable.ic_navigation_next_item
-          case (Next, true) => R.drawable.ic_navigation_next_item_disabled
-        }
-      }}
-
-      onClick(f)
-    }
-
-    += (mkButton(Prev, { (validExposureTimes() filter { _ > exposureTime() }).lastOption foreach { exposureTime() = _ } }).<<(32.dip, 32.dip).>>)
-    += (new STextView {
-      observe { exposureTime foreach { t => text = if (t >= 500000000) f"${t / 1000000000.0}%.1f″" else s"1/${1000000000 / t}" } }
-      observe { autoExposure foreach { ae => textColor = if (ae) Color.parseColor("#d0d0d0") else Color.parseColor("#000000") } }
-    }.padding(4.dip, 16.dip, 4.dip, 16.dip).wrap)
-    += (mkButton(Next, { validExposureTimes() find { _ < exposureTime() } foreach { exposureTime() = _ } }).<<(32.dip, 32.dip).>>)
-
-    += (mkButton(Prev, { (validIsos() filter { _ < iso() }).lastOption foreach { iso() = _ } }).<<(32.dip, 32.dip).>>)
-    += (new STextView {
-      observe { iso foreach { v => text = s"ISO $v" } }
-      observe { autoExposure foreach { ae => textColor = Color.parseColor { if (ae) "#d0d0d0" else "#000000" } } }
-    }.padding(4.dip, 16.dip, 4.dip, 16.dip).wrap)
-    += (mkButton(Next, { validIsos() find { _ > iso() } foreach { iso() = _ } }).<<(32.dip, 32.dip).>>)
-  }
-
-  lazy val burstView = new SLinearLayout {
-    clickable = true
-    backgroundColor = Color.parseColor("#fafafa")
-    gravity = Gravity.CENTER
-    visibility = View.INVISIBLE
-    enabled = false
-
-    += (new STextView {
-      text = "Burst"
-      typeface = Typeface.DEFAULT_BOLD
-      textSize = 16.sp
-    }.padding(8.dip, 16.dip, 8.dip, 16.dip).wrap)
-
-    val isBurstSession = Rx { lcamera() exists { camera => camera.captureSession() flatMap { _.toOption } exists { _.isInstanceOf[camera.BurstSession] } } }
-    += (new SSwitch {
-      observe { isBurstSession foreach { checked = _ } }
-      onCheckedChanged { (v: CompoundButton, checked: Boolean) => for { camera <- lcamera() ; surface <- previewSurface() } {
-        if (checked) { if (!isBurstSession()) camera.openBurstSession(surface, burstCaptureRawYuv()) } else camera.openPhotoSession(surface)
-      }}
-    }.padding(8.dip, 16.dip, 8.dip, 16.dip).wrap)
-
-    += (new SCheckBox {
-      text = "Exposure Bracket"
-      observe { exposureBracketing foreach { setChecked } }
-      observe { isBurstSession foreach { enabled = _ } }
-      onCheckedChanged { (v: View, checked: Boolean) => exposureBracketing() = checked }
-    })
-
-    += (new STextView {
-      observe { burstCaptureRawYuv foreach {
-        case Raw => text = "DNG"
-        case Yuv => text = "JPEG"
-      }}
-      observe { isBurstSession foreach {
-        en => enabled = en
-        textColor = Color.parseColor(if (en) "#4285f4" else "#d0d0d0")
-      }}
-      typeface = Typeface.DEFAULT_BOLD
-      textSize = 16.sp
-      onClick {
-        burstCaptureRawYuv() = burstCaptureRawYuv() match { case Raw => Yuv ; case Yuv => Raw }
-        for { camera <- lcamera() ; surface <- previewSurface() } {
-          if (isBurstSession()) camera.openBurstSession(surface, burstCaptureRawYuv())
-        }}
-    }.padding(16.dip, 16.dip, 8.dip, 16.dip).wrap)
-  }
-
-  lazy val fabSize = 40.dip
-  lazy val fabMargin = 16.dip
-  lazy val fab = new Fab(ctx) with TraitImageButton[Fab] {
+  lazy val cpv = new CircularProgressView(ctx) with TraitView[CircularProgressView] with Observable {
     val basis = this
+    setIndeterminate(true)
+    setThickness(4.dip)
+    setColor(Colors.orange500)
+    startAnimation()
 
-    setType(FloatingActionButton.TYPE_MINI)
-    setShadow(false)
-    setColorNormal(Color.parseColor("#ff4081"))
-    setColorPressed(Color.parseColor("#ff80ab"))
-    imageResource = R.drawable.ic_core_overflow_rotated
-
-    onClick {
-      val animatorSet = new AnimatorSet()
-      animatorSet.play(circularHide(basis, fabSize / 2, fabSize / 2, fabSize / 2))
-                 .before(circularReveal(toolbar, fabMargin + fabSize / 2, toolbar.height - fabMargin - fabSize / 2, toolbar.width))
-      animatorSet.start()
-      enabled = false
-      toolbar.enabled = true
-    }
-  }
-
-  lazy val progressBar = new ProgressBar(ctx, null, android.R.attr.progressBarStyleHorizontal) with TraitProgressBar[ProgressBar] {
-    val basis = this
-    indeterminate = true
     observe { Rx {
       lcamera() match {
-        case Some(camera) => camera.captureSession() match {
+        case Some(camera) => camera.captureSession() flatMap { _.toOption } match {
           case Some(ps: camera.PhotoSession) => ps.capturing()
+          case Some(bs: camera.BurstSession) => bs.capturing()
           case _ => false
         }
         case _ => false
@@ -1119,24 +863,164 @@ class MainActivity extends SActivity with Observable {
   override def onCreate(savedInstanceState: Bundle) {
     super.onCreate(savedInstanceState)
 
-    if (List(0, 2) contains windowManager.getDefaultDisplay.getRotation) {
-      finish()
-      return
-    }
-
     if (Log.isLoggable("lcamera", Log.VERBOSE)) {
       dumpCameraInfo()
     }
 
     contentView = new SRelativeLayout {
-      += (textureView.<<.alignParentLeft.alignParentTop.alignParentBottom.leftOf(captureButton).>>)
-      += (toolbar.<<.fw.alignParentLeft.leftOf(captureButton).alignParentBottom.>>)
-      += (afView.<<.fw.alignParentLeft.leftOf(captureButton).alignParentBottom.>>)
-      += (aeView.<<.fw.alignParentLeft.leftOf(captureButton).alignParentBottom.>>)
-      += (burstView.<<.fw.alignParentLeft.leftOf(captureButton).alignParentBottom.>>)
-      += (captureButton.<<(96.dip, MATCH_PARENT).alignParentRight.alignParentTop.alignParentBottom.>>)
-      += (progressBar.<<.fw.alignParentLeft.leftOf(captureButton).alignParentBottom.marginBottom(-4.dip).>>)
-      += (fab.<<.wrap.alignParentLeft.alignParentBottom.marginLeft(fabMargin).marginBottom(fabMargin).>>)
+      def toggleToolbar(v: View, others: List[View]) {
+        for { v <- others if v.enabled } {
+          slideDownHide(v)
+        }
+
+        if (v.enabled) { slideDownHide(v) } else { slideUpShow(v) }
+      }
+
+      class Toolbar extends SLinearLayout {
+        clickable = true
+        backgroundColor = Colors.grey800
+        gravity = Gravity.CENTER
+        visibility = View.INVISIBLE
+        enabled = false
+      }
+
+      val afView = new Toolbar {
+        += (new STextView {
+          observe { autoFocus foreach { af => text = if (af) "AF" else "MF" } }
+          observe { autoFocus foreach { af => textColor = if (af) Colors.grey600 else Colors.orange500 } }
+          onClick { autoFocus() = !autoFocus() }
+          typeface = Typeface.DEFAULT_BOLD
+          textSize = 16.sp
+        }.padding(8.dip, 16.dip, 16.dip, 16.dip).wrap)
+        += (new SSeekBar {
+          observe { lcamera foreach { _ foreach { camera => max = (camera.minFocusDistance * 100).round } } }
+          observe { autoFocus foreach { af => enabled = !af } }
+          observe { focusDistance.foreach { fd => setProgress { (fd * 100).round } } }
+          onProgressChanged { (seekbar: SeekBar, value: Int, fromUser: Boolean) => {
+            if (fromUser)
+              focusDistance() = value.toFloat / 100
+          }}
+        }.padding(8.dip, 8.dip, 8.dip, 8.dip).<<.fw.Weight(1.0f).>>)
+      }.padding(16.dip, 0, 16.dip, 0)
+
+      val aeView = new Toolbar {
+        += (new STextView {
+          text = "f/2.4" // FIXME
+          typeface = condensedTypeface
+          textColor = Colors.grey600
+        }.padding(8.dip, 16.dip, 8.dip, 16.dip).wrap)
+
+        def makeButton(drawableRes: Int, rxEnable: Rx[Boolean], f: => Unit): SImageButton = new SImageButton {
+          backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
+          padding(4.dip)
+          observe { rxEnable foreach { en =>
+            enabled = en
+            imageDrawable = if (en) drawableRes else disabledTint(drawableRes)
+          } }
+          onClick(f)
+        }
+
+        val prevExposureTime = Rx { (validExposureTimes() filter { _ > exposureTime() }).lastOption }
+        += (makeButton(R.drawable.ic_navigation_chevron_left, Rx { !autoExposure() && prevExposureTime().nonEmpty }, { prevExposureTime() foreach { exposureTime() = _ } }))
+        += (new STextView {
+          typeface = condensedTypeface
+          val lastExposureTime = Rx { lcamera() flatMap { _.captureSession() flatMap { _.toOption } } map { _.lastExposureTime() } getOrElse 1000000000l }
+          observe { Rx { if (autoExposure()) lastExposureTime() else exposureTime() } foreach { t => text = if (t >= 500000000) f"${t / 1000000000.0}%.1f″" else s"1/${1000000000 / t}" } }
+          observe { autoExposure foreach { ae => textColor = if (ae) Colors.grey600 else Colors.orange500 } }
+          onClick { autoExposure() = !autoExposure() }
+        }.padding(0.dip, 16.dip, 0.dip, 16.dip).wrap)
+        val nextExposureTime = Rx { validExposureTimes() find { _ < exposureTime() } }
+        += (makeButton(R.drawable.ic_navigation_chevron_right, Rx { !autoExposure() && nextExposureTime().nonEmpty }, { nextExposureTime() foreach { exposureTime() = _ } }))
+
+        val prevIso = Rx { (validIsos() filter { _ < iso() }).lastOption }
+        += (makeButton(R.drawable.ic_navigation_chevron_left, Rx { !autoExposure() && prevIso().nonEmpty }, { prevIso() foreach { iso() = _ } }))
+        += (new STextView {
+          typeface = condensedTypeface
+          val lastIso = Rx { lcamera() flatMap { _.captureSession() flatMap { _.toOption } } map { _.lastIso() } getOrElse 100 }
+          observe { Rx { if (autoExposure()) lastIso() else iso() } foreach { v => text = s"ISO $v" } }
+          observe { autoExposure foreach { ae => textColor = if (ae) Colors.grey600 else Colors.orange500 } }
+          onClick { autoExposure() = !autoExposure() }
+        }.padding(0.dip, 16.dip, 0.dip, 16.dip).wrap)
+        val nextIso = Rx { validIsos() find { _ > iso() } }
+        += (makeButton(R.drawable.ic_navigation_chevron_right, Rx { !autoExposure() && nextIso().nonEmpty }, { nextIso() foreach { iso() = _ } }))
+      }
+
+      val modeView = new Toolbar {
+        class ModeButton(drawableRes: Int, f: (LCamera, Surface) => Unit) extends SImageButton with Observable {
+          backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
+
+          val rxEnable = Rx { lcamera() match {
+            case Some(camera) => camera.captureSession() flatMap { _.toOption } match {
+              case Some(ps: camera.PhotoSession) => !ps.capturing()
+              case Some(bs: camera.BurstSession) => !bs.capturing()
+              case Some(bs: camera.BulbSession) => !bs.capturing()
+              case Some(vs: camera.VideoSession) => !vs.recording()
+              case None => true
+            }
+            case None => false
+          } }
+
+          observe { rxEnable foreach { enabled = _ } }
+          observe { rxEnable foreach { en => imageDrawable = if (en) drawableRes else disabledTint(drawableRes) } }
+          onClick { for { camera <- lcamera() ; previewSurface <- previewSurface() } { f(camera, previewSurface) } }
+
+          <<.marginLeft(8.dip).marginRight(8.dip).wrap.>>
+        }
+
+        += (new ModeButton(R.drawable.ic_photo_mode, { (camera, surface) => camera.openPhotoSession(surface) }))
+        += (new ModeButton(R.drawable.ic_burst_mode, { (camera, surface) => camera.openBurstSession(surface, burstCaptureRawYuv(), 20) }))
+        += (new ModeButton(R.drawable.ic_bulb_mode , { (camera, surface) => camera.openBulbSession(surface) }))
+        += (new ModeButton(R.drawable.ic_video_mode, { (camera, surface) => camera.openVideoSession(surface, userVideoConfiguration()) }))
+      }
+
+      val bottomBar = new SLinearLayout {
+        backgroundColor = Colors.grey800
+        gravity = Gravity.CENTER
+
+        += (new SImageView {
+          gravity = Gravity.CENTER
+          backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
+          imageDrawable = R.drawable.ic_focus
+          onClick { toggleToolbar(afView, List(aeView, modeView)) }
+        }.padding(16.dip).wrap)
+        += (new SImageView {
+          gravity = Gravity.CENTER
+          backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
+          imageDrawable = R.drawable.ic_exposure
+          onClick { toggleToolbar(aeView, List(afView, modeView)) }
+        }.padding(16.dip).wrap)
+        += (new SRelativeLayout {
+          += (captureButton.<<(56.dip, 56.dip).centerInParent.>>)
+          += (cpv.<<(60.dip, 60.dip).centerInParent.>>)
+        }.<<(80.dip, 80.dip).>>)
+        += (new SImageView {
+          gravity = Gravity.CENTER
+          backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
+          observe { Rx { lcamera() match {
+            case Some(camera) => camera.captureSession() flatMap { _.toOption } match {
+              case Some(_: camera.PhotoSession) => R.drawable.ic_photo_mode
+              case Some(_: camera.BurstSession) => R.drawable.ic_burst_mode
+              case Some(_: camera.BulbSession) => R.drawable.ic_bulb_mode
+              case Some(_: camera.VideoSession) => R.drawable.ic_video_mode
+              case None => R.drawable.ic_photo_mode
+            }
+            case None => R.drawable.ic_photo_mode
+          } } foreach { imageDrawable = _ } }
+          onClick { toggleToolbar(modeView, List(afView, aeView)) }
+        }.padding(16.dip).wrap)
+        += (new SImageView {
+          gravity = Gravity.CENTER
+          backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
+          imageDrawable = R.drawable.ic_settings
+          onClick { showSettingsDialog }
+        }.padding(16.dip).wrap)
+      }
+
+      += (textureView.<<.alignParentLeft.alignParentRight.alignParentTop.above(bottomBar).>>)
+      for { v <- List(afView, aeView, modeView) } {
+        += (v.<<.fw.alignParentLeft.alignParentRight.above(bottomBar).>>)
+      }
+      += (bottomBar.<<(MATCH_PARENT, 96.dip).alignParentLeft.alignParentRight.alignParentBottom.>>)
     }
 
     getWindow.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -1208,28 +1092,6 @@ class MainActivity extends SActivity with Observable {
     prefs.burstCaptureRawYuv = burstCaptureRawYuv() match { case Raw => true ; case Yuv => false }
   }
 
-  override def onBackPressed() {
-    if (afView.enabled) {
-      slideDownHide(afView)
-      afView.enabled = false
-    } else if (aeView.enabled) {
-      slideDownHide(aeView)
-      aeView.enabled = false
-    } else if (burstView.enabled) {
-      slideDownHide(burstView)
-      burstView.enabled = false
-    } else if (toolbar.enabled) {
-      val animatorSet = new AnimatorSet()
-      animatorSet.play(circularHide(toolbar, fabMargin + fabSize / 2, toolbar.height - fabMargin - fabSize / 2, toolbar.width))
-                 .before(circularReveal(fab, fabSize / 2, fabSize / 2, fabSize / 2))
-      animatorSet.start()
-      fab.enabled = true
-      toolbar.enabled = false
-    } else {
-      super.onBackPressed()
-    }
-  }
-
   override def onKeyDown(keyCode: Int, event: KeyEvent): Boolean = {
     if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
       captureButton.performClick()
@@ -1282,10 +1144,144 @@ class MainActivity extends SActivity with Observable {
     debug(s"JPEG saved: $filePath")
   }
 
+  def disabledTint(drawable: Int): Drawable = {
+    val d = drawable.mutate()
+    d.setColorFilter(Colors.grey600, PorterDuff.Mode.SRC_IN)
+    d
+  }
+
   def resolveAttr(attr: Int): Int = {
     val ta = obtainStyledAttributes(Array[Int](attr))
     val resId = ta.getResourceId(0, 0)
     ta.recycle()
     resId
+  }
+
+  def showSettingsDialog() {
+    new AlertDialogBuilder {
+      setView(new SVerticalLayout {
+        padding(24.dip, 16.dip, 24.dip, 16.dip)
+
+        += (new STextView {
+          text = "Photo Mode"
+          textColor = Colors.grey600
+          textSize = 14.sp
+          gravity = Gravity.CENTER_VERTICAL
+        }.<<(MATCH_PARENT, 32.dip).>>)
+
+        += (new SRelativeLayout {
+          padding(0.dip, 16.dip, 0.dip, 16.dip)
+
+          += (new STextView {
+            text = "Save DNG"
+            textColor = Colors.grey300
+            textSize = 16.sp
+          }.<<.wrap.alignParentLeft.centerVertical.>>)
+
+          += (new SCheckBox {
+            observe { saveDng foreach setChecked }
+            onCheckedChanged { (v: View, checked: Boolean) => saveDng() = checked }
+          }.<<.wrap.alignParentRight.centerVertical.>>)
+        })
+
+        += (new STextView {
+          text = "Burst Mode"
+          textColor = Colors.grey600
+          textSize = 14.sp
+          gravity = Gravity.CENTER_VERTICAL
+        }.<<(MATCH_PARENT, 32.dip).>>)
+
+        += (new SRelativeLayout {
+          padding(0.dip, 16.dip, 0.dip, 16.dip)
+
+          += (new STextView {
+            text = "Exposure Bracketing"
+            textColor = Colors.grey300
+            textSize = 16.sp
+          }.<<.wrap.alignParentLeft.centerVertical.>>)
+
+          += (new SCheckBox {
+            observe { exposureBracketing foreach { setChecked } }
+            onCheckedChanged { (v: View, checked: Boolean) => exposureBracketing() = checked }
+          }.<<.wrap.alignParentRight.centerVertical.>>)
+        })
+
+        += (new SRelativeLayout {
+          padding(0.dip, 16.dip, 0.dip, 16.dip)
+
+          += (new STextView {
+            text = "Save DNG"
+            textColor = Colors.grey300
+            textSize = 16.sp
+          }.<<.wrap.alignParentLeft.centerVertical.>>)
+
+          += (new SCheckBox {
+            observe { burstCaptureRawYuv foreach {
+              case Raw => checked = true
+              case Yuv => checked = false
+            }}
+            onCheckedChanged { (v: View, checked: Boolean) => {
+              burstCaptureRawYuv() = if (checked) Raw else Yuv
+              for { camera <- lcamera() ; surface <- previewSurface() } {
+                if (isBurstSession()) camera.openBurstSession(surface, burstCaptureRawYuv())
+              }}
+            }
+          }.<<.wrap.alignParentRight.centerVertical.>>)
+        })
+
+        += (new STextView {
+          text = "Video Mode"
+          textColor = Colors.grey600
+          textSize = 14.sp
+          gravity = Gravity.CENTER_VERTICAL
+        }.<<(MATCH_PARENT, 32.dip).>>)
+
+        += (new SVerticalLayout {
+          padding(0.dip, 16.dip, 0.dip, 16.dip)
+
+          += (new STextView {
+            text = "Video Resolution"
+            textColor = Colors.grey300
+            textSize = 16.sp
+          }.wrap)
+
+          += (new STextView {
+            textSize = 12.sp
+            textColor = Colors.grey600
+            observe { userVideoConfiguration foreach { vc => text = vc.toString } }
+          }.wrap)
+
+          onClick {
+            new AlertDialogBuilder("Video Resolution") {
+              val videoConfigurationAdapter: ArrayAdapter[VideoConfiguration] = new SArrayAdapter(videoConfigurations.toArray) {
+                override def isEnabled(which: Int): Boolean = availableVideoConfigurations() contains videoConfigurations(which)
+
+                override def getView(which: Int, convertView: View, parent: ViewGroup): View =
+                  new STextView {
+                    text = videoConfigurations(which).toString
+                    textColor = videoConfigurationAdapter.isEnabled(which) match {
+                      case true => if (videoConfigurations(which) == userVideoConfiguration()) Colors.orange500 else Colors.grey300
+                      case false => Colors.grey600
+                    }
+                    textSize = 16.sp
+                  }.padding(16.dip)
+              }
+
+              setAdapter(videoConfigurationAdapter, new DialogInterface.OnClickListener {
+                override def onClick(dialog: DialogInterface, which: Int) { userVideoConfiguration() = videoConfigurations(which) }
+              })
+            }.show()
+          }
+        })
+
+        += (new STextView {
+          text = "Help & GitHub"
+          textColor = Colors.grey300
+          textSize = 16.sp
+          gravity = Gravity.CENTER_VERTICAL
+          onClick { openUri("https://www.github.com/pkmx/lcamera") }
+        }.<<(MATCH_PARENT, 32.dip).>>)
+      })
+    }.show()
   }
 }
