@@ -33,24 +33,30 @@ You can either install the pre-built debug APK from the [release](https://github
 
 ## Usage
 
-Just use it like any camera! Tap the floating button on the left-bottom corner to bring up settings:
+Just use it like any camera! Tap other four button at the bottom to bring up settings:
 
 * Focus
- * Auto Focus: Whether the auto focus mechanism is enabled (tap on the preview to focus on a specific point).
+ * AF/MF: Whether the auto focus mechanism is enabled (tap on the preview to focus on a specific point).
  * Focus Distance: Manually control focus distance if auto focus is turned off.
 * Exposure
- * Auto Exposure: Whether auto exposure and auto white balance routines are enabled (tap on the preview to start a metering sequence).
- * Shutter Speed: Control the exposure time. (Setting a slow shutter speed will affect preview frame rate)
+ * Tap on either shutter speed or ISO values to enable manual exposure control.
+ * Aperture: Show the aperture of the camera. Currently, all devices that support the new `camera2` API have fixed aperture, and therefore this setting cannot be changed.
+ * Shutter Speed: Control shutter speed of the sensor. (Setting a slow shutter speed will affect preview frame rate)
  * ISO: Control the sensitivity of the sensor.
-* Burst
- * Burst: Control whether burst capturing is enabled. If enabled, the camera will capture 7 images at maximum resolution at 30 fps.
- * Focus Stacking: If enabled, the camera will capture a series of images ranging from infinity focus and to the nearest focus distance possible.
- * Exposure Bracketing: If enabled, the camera will capture a series of 7 images ranging from -3 to +3 EV of the standard expousre. (Only the shutter speed is varied, the ISO stays the same)
- * DNG/JPEG: Specify the output format for burst capture.
-* Photo/Video: Switch between photo capturing and video recording mode. The video is encoded with H.264/AVC for video and 44.1khz 320kbps AAC-LC for audio in MP4 container. Focus distance and exposure are adjustable during recording.
+* Mode
+ * Photo mode: Take a single capture at the highest quality possible.
+ * Burst mode: Capture up to 7 image at maximum resolution at 30 fps.
+ * Bulb mode: Keep capturing DNG images until manually stopped. Note that as the Nexus 5's internal memory writing speed cannot keep up with the rate the camera pushes out new images even at the slowest shutter speed, the camera waits until the previous image is saved before starting a new capture to avoid filling the buffers.
+ * Video mode: Videos are encoded with H.264/AVC for video and 44.1khz 320kbps AAC-LC for audio in MP4 container. Focus distance and exposure settings are adjustable during recording.
 * Settings
- * Video Resolution: Configurate video resolution, fps and encoding bitrate. (See below for 60fps recording)
- * Save DNG: Specify whether the DNG output is saved in single capture mode.
+ * Photo Mode:
+   * Save DNG: Toggle whether a DNG image is saved in single capture mode.
+ * Burst Mode:
+   * Exposure Bracketing: If enabled, the camera will capture a series of 7 images ranging from -3 to +3 EV of the standard expousre. (Only the shutter speed is varied, the ISO stays the same)
+   * Save DNG: Specify the output format for burst capture.
+ * Video Mode
+   * Video Resolution: Configurate video resolution, fps and encoding bitrate. (See below for 60fps recording)
+   Switch between photo capturing and video recording mode.
 
 If you are looking for a stopwatch to test the burst capture feature, check out [this jsfiddle](http://jsfiddle.net/jw2z5eeu/).
 
@@ -103,6 +109,7 @@ The app is written in the [Scala](http://www.scala-lang.org/) programming langua
 * [Scaloid](https://github.com/pocorall/scaloid/): for UI layout and various helpers.
 * [Scala.Rx](https://github.com/lihaoyi/scala.rx): for reactive value propagation.
 * [Floating Action Button](https://github.com/makovkastar/FloatingActionButton): for the floating action button (FAB) featured in material design.
+* [Circular Progress View](https://github.com/rahatarmanahmed/CircularProgressView): for the progress circle around the FAB.
 
 ### How to build
 
