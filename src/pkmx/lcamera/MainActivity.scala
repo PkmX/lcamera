@@ -905,7 +905,7 @@ class MainActivity extends SActivity with Observable {
 
       val aeView = new Toolbar {
         += (new STextView {
-          text = "f/2.4" // FIXME
+          observe { lcamera foreach { _ foreach { camera => text = f"f/${camera.characteristics.get(LENS_INFO_AVAILABLE_APERTURES)(0)}%.1f" } } }
           typeface = condensedTypeface
           textColor = Colors.grey600
         }.padding(8.dip, 16.dip, 8.dip, 16.dip).wrap)
