@@ -113,7 +113,7 @@ The app is written in the [Scala](http://www.scala-lang.org/) programming langua
 
 ### How to build
 
-You must have both **scala 2.11.4** and **sbt >= 0.13** installed.
+You must have both **scala 2.11.5** and **sbt >= 0.13** installed.
 
 To build the app (the resulting APK will be placed in the `bin/` directory):
 

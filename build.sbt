@@ -5,7 +5,7 @@ android.Plugin.androidBuild
 
 name := "lcamera"
 
-scalaVersion := "2.11.4"
+scalaVersion := "2.11.5"
 
 resolvers += "Akka Snapshot Repository" at "http://repo.akka.io/snapshots/"
 
@@ -33,7 +33,7 @@ proguardOptions in Android ++=
       , "-dontwarn sun.misc.Unsafe"
       )
 
-scalacOptions in Compile ++= Seq("-feature", "-deprecation", "-Xfuture", "-Ywarn-dead-code", "-Ywarn-unused")
+scalacOptions in Compile ++= Seq("-feature", "-deprecation", "-Xlint", "-Xfuture", "-Ywarn-dead-code", "-Ywarn-unused")
 
 run <<= run in Android
 

@@ -1,7 +1,5 @@
 package pkmx.lcamera
 
-import org.scaloid.common
-
 import collection.JavaConversions._
 import java.io.{File, FileOutputStream}
 import java.nio.ByteBuffer
@@ -36,15 +34,12 @@ import android.util.Size
 
 import com.melnykov.fab.FloatingActionButton
 import com.github.rahatarmanahmed.cpv.CircularProgressView
-import org.scaloid.common._
+import org.scaloid.common.{runOnUiThread => _, _}
 import rx._
 import rx.ops._
 
 object Utils {
   implicit val execCtx = ExecutionContext.fromExecutor(AsyncTask.THREAD_POOL_EXECUTOR)
-
-  implicit def requestKeyCovariant[_ <: Any](k: CaptureRequest.Key[_]): CaptureRequest.Key[Any] = k.asInstanceOf[CaptureRequest.Key[Any]]
-  implicit def resultKeyCovariant[_ <: Any](k: CaptureRequest.Key[_]): CaptureResult.Key[Any] = k.asInstanceOf[CaptureResult.Key[Any]]
 
   type Fab = FloatingActionButton
 
@@ -196,6 +191,24 @@ object Utils {
   implicit class RichRxOps[+T](val rx: Rx[T]) {
     def withFilter(f: T => Boolean) = rx filter f
   }
+
+  // See: https://github.com/pkmx/lcamera/issues/138
+  implicit class RichCaptureRequestBuilder(val builder: CaptureRequest.Builder) {
+    def set_[T, U](k: CaptureRequest.Key[T], v: U)(implicit ev: U => T): Unit = {
+      builder.set(k, implicitly[T](v))
+    }
+  }
+
+  def runOnUiThread(f: => Unit): Unit = {
+    if (uiThread == Thread.currentThread) {
+      f
+    } else {
+      handler.post(new Runnable() {
+        def run(): Unit = f
+      })
+    }
+  }
+
 }
 
 import Utils._
@@ -277,24 +290,24 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
     def lastIso: Rx[Int] = lastIsoVar
 
     protected[this] def setupRequest(request: CaptureRequest.Builder, focus: Focus, exposure: Exposure): Unit = {
-      request.set(CONTROL_MODE, CONTROL_MODE_AUTO)
+      request.set_(CONTROL_MODE, CONTROL_MODE_AUTO)
       focus match {
         case AutoFocus =>
-          request.set(CONTROL_AF_MODE, CONTROL_AF_MODE_AUTO)
+          request.set_(CONTROL_AF_MODE, CONTROL_AF_MODE_AUTO)
         case ManualFocus(fd) =>
-          request.set(CONTROL_AF_MODE, CONTROL_AF_MODE_OFF)
-          request.set(LENS_FOCUS_DISTANCE, fd)
+          request.set_(CONTROL_AF_MODE, CONTROL_AF_MODE_OFF)
+          request.set_(LENS_FOCUS_DISTANCE, fd)
       }
 
       exposure match {
         case AutoExposure =>
-          request.set(CONTROL_AE_MODE, CONTROL_AE_MODE_ON)
+          request.set_(CONTROL_AE_MODE, CONTROL_AE_MODE_ON)
         case ManualExposure(duration, iso) =>
-          request.set(CONTROL_AE_MODE, CONTROL_AE_MODE_OFF)
-          request.set(SENSOR_EXPOSURE_TIME, duration)
-          request.set(SENSOR_SENSITIVITY, iso)
+          request.set_(CONTROL_AE_MODE, CONTROL_AE_MODE_OFF)
+          request.set_(SENSOR_EXPOSURE_TIME, duration)
+          request.set_(SENSOR_SENSITIVITY, iso)
       }
-      request.set(SENSOR_FRAME_DURATION, minFrameDuration)
+      request.set_(SENSOR_FRAME_DURATION, minFrameDuration)
     }
 
     def setupPreview(focus: Focus, exposure: Exposure): Unit = {
@@ -318,23 +331,23 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
 
       focus match {
         case AutoFocus =>
-          request.set(CONTROL_AF_MODE, CONTROL_AF_MODE_AUTO)
-          request.set(CONTROL_AF_TRIGGER, CONTROL_AF_TRIGGER_START)
-          request.set(CONTROL_AF_REGIONS, Array[MeteringRectangle](mr))
+          request.set_(CONTROL_AF_MODE, CONTROL_AF_MODE_AUTO)
+          request.set_(CONTROL_AF_TRIGGER, CONTROL_AF_TRIGGER_START)
+          request.set_(CONTROL_AF_REGIONS, Array[MeteringRectangle](mr))
         case ManualFocus(fd) =>
-          request.set(CONTROL_AF_MODE, CONTROL_AF_MODE_OFF)
-          request.set(LENS_FOCUS_DISTANCE, fd)
+          request.set_(CONTROL_AF_MODE, CONTROL_AF_MODE_OFF)
+          request.set_(LENS_FOCUS_DISTANCE, fd)
       }
 
       exposure match {
         case AutoExposure =>
-          request.set(CONTROL_AE_MODE, CONTROL_AE_MODE_ON)
-          request.set(CONTROL_AE_PRECAPTURE_TRIGGER, CONTROL_AE_PRECAPTURE_TRIGGER_START)
-          request.set(CONTROL_AE_REGIONS, Array[MeteringRectangle](mr))
+          request.set_(CONTROL_AE_MODE, CONTROL_AE_MODE_ON)
+          request.set_(CONTROL_AE_PRECAPTURE_TRIGGER, CONTROL_AE_PRECAPTURE_TRIGGER_START)
+          request.set_(CONTROL_AE_REGIONS, Array[MeteringRectangle](mr))
         case ManualExposure(duration, iso) =>
-          request.set(CONTROL_AE_MODE, CONTROL_AE_MODE_OFF)
-          request.set(SENSOR_EXPOSURE_TIME, duration)
-          request.set(SENSOR_SENSITIVITY, iso)
+          request.set_(CONTROL_AE_MODE, CONTROL_AE_MODE_OFF)
+          request.set_(SENSOR_EXPOSURE_TIME, duration)
+          request.set_(SENSOR_SENSITIVITY, iso)
       }
       request.addTarget(previewSurface)
 
@@ -419,10 +432,10 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
 
         val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
         setupRequest(request, focus, exposure)
-        request.set(LENS_OPTICAL_STABILIZATION_MODE, LENS_OPTICAL_STABILIZATION_MODE_ON)
-        request.set(JPEG_QUALITY, 100.toByte)
-        request.set(JPEG_ORIENTATION, orientationToDegree(orientation))
-        request.set(STATISTICS_LENS_SHADING_MAP_MODE, STATISTICS_LENS_SHADING_MAP_MODE_ON) // Required for RAW capture
+        request.set_(LENS_OPTICAL_STABILIZATION_MODE, LENS_OPTICAL_STABILIZATION_MODE_ON)
+        request.set_(JPEG_QUALITY, 100.toByte)
+        request.set_(JPEG_ORIENTATION, orientationToDegree(orientation))
+        request.set_(STATISTICS_LENS_SHADING_MAP_MODE, STATISTICS_LENS_SHADING_MAP_MODE_ON) // Required for RAW capture
         List(previewSurface, jpegSurface, rawSurface) foreach request.addTarget
 
         debug(s"Capturing with $session")
@@ -476,9 +489,9 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
         val builders = requests map { r => {
           val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
           setupRequest(request, r.focus, r.exposure)
-          request.set(LENS_OPTICAL_STABILIZATION_MODE, LENS_OPTICAL_STABILIZATION_MODE_ON)
+          request.set_(LENS_OPTICAL_STABILIZATION_MODE, LENS_OPTICAL_STABILIZATION_MODE_ON)
           if (rawYuv == Raw) {
-            request.set (STATISTICS_LENS_SHADING_MAP_MODE, STATISTICS_LENS_SHADING_MAP_MODE_ON) // Required for RAW capture
+            request.set_(STATISTICS_LENS_SHADING_MAP_MODE, STATISTICS_LENS_SHADING_MAP_MODE_ON) // Required for RAW capture
           }
           request.addTarget(surface)
           request
@@ -512,6 +525,7 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
             }
           }
         }
+
         f onFailure { case NonFatal(e) => e.printStackTrace() }
         f onComplete { _ => runOnUiThread { capturingVar() = false } }
       }
@@ -540,8 +554,8 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
           if (keepCapturing) {
             val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             setupRequest(request, focus, exposure)
-            request.set(LENS_OPTICAL_STABILIZATION_MODE, LENS_OPTICAL_STABILIZATION_MODE_ON)
-            request.set(STATISTICS_LENS_SHADING_MAP_MODE, STATISTICS_LENS_SHADING_MAP_MODE_ON) // Required for RAW capture
+            request.set_(LENS_OPTICAL_STABILIZATION_MODE, LENS_OPTICAL_STABILIZATION_MODE_ON)
+            request.set_(STATISTICS_LENS_SHADING_MAP_MODE, STATISTICS_LENS_SHADING_MAP_MODE_ON) // Required for RAW capture
             List(previewSurface, surface) foreach request.addTarget
 
             debug(s"bulb capturing with $session")
