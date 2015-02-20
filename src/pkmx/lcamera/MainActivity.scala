@@ -32,7 +32,7 @@ import android.view.animation.{Animation, TranslateAnimation}
 import android.view.animation.Animation.AnimationListener
 import android.widget._
 import android.widget.ImageView.ScaleType
-import android.util.{Log, Size}
+import android.util.Size
 
 import com.melnykov.fab.FloatingActionButton
 import com.github.rahatarmanahmed.cpv.CircularProgressView
@@ -56,9 +56,9 @@ object Utils {
       Animation.RELATIVE_TO_SELF, 0) {
       setDuration(300)
       setAnimationListener(new AnimationListener {
-        override def onAnimationEnd(anim: Animation) { v.visibility = View.VISIBLE }
-        override def onAnimationStart(anim: Animation) {}
-        override def onAnimationRepeat(anim: Animation) {}
+        override def onAnimationEnd(anim: Animation): Unit = { v.visibility = View.VISIBLE }
+        override def onAnimationStart(anim: Animation): Unit = {}
+        override def onAnimationRepeat(anim: Animation): Unit = {}
       })
     })
     v.enable()
@@ -72,9 +72,9 @@ object Utils {
       Animation.RELATIVE_TO_SELF, 1) {
       setDuration(300)
       setAnimationListener(new AnimationListener {
-        override def onAnimationEnd(anim: Animation) { v.visibility = View.INVISIBLE }
-        override def onAnimationStart(anim: Animation) {}
-        override def onAnimationRepeat(anim: Animation) {}
+        override def onAnimationEnd(anim: Animation): Unit = { v.visibility = View.INVISIBLE }
+        override def onAnimationStart(anim: Animation): Unit = {}
+        override def onAnimationRepeat(anim: Animation): Unit = {}
       })
     })
     v.disable()
@@ -89,13 +89,13 @@ object Utils {
     def surfaceTexture: Rx[Option[SurfaceTexture]] = surfaceTextureVar
 
     setSurfaceTextureListener(new TextureView.SurfaceTextureListener {
-      override def onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
+      override def onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int): Unit = {
         debug(s"Surface texture available: $texture")
         surfaceTextureVar() = Option(texture)
       }
 
       override def onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) = onSurfaceTextureAvailable _
-      override def onSurfaceTextureUpdated(st: SurfaceTexture) {}
+      override def onSurfaceTextureUpdated(st: SurfaceTexture): Unit = {}
       override def onSurfaceTextureDestroyed(st: SurfaceTexture) = {
         debug("Surface texture destroyed")
         surfaceTextureVar() = None
@@ -132,7 +132,7 @@ object Utils {
     val tmpFilePath = createPathIfNotExist(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + "/Camera/") + ".lcamera.mp4"
   }
 
-  def renameFile(src: String, dst: String) { new File(src).renameTo(new File(dst)) }
+  def renameFile(src: String, dst: String): Unit = { new File(src).renameTo(new File(dst)) }
 
   def orientationToDegree(orientation: Int) = orientation match {
     case Surface.ROTATION_0 => 90
@@ -166,7 +166,7 @@ object Utils {
       obs
     }
 
-    override def close() {
+    override def close(): Unit = {
       obses foreach { _.kill() }
     }
   }
@@ -177,9 +177,9 @@ object Utils {
     bytes
   }
 
-  def mediaScan(filePath: String, action: String)(implicit ctx: Context) {
+  def mediaScan(filePath: String, action: String)(implicit ctx: Context): Unit = {
     MediaScannerConnection.scanFile(ctx, Array(filePath), null, new OnScanCompletedListener {
-      override def onScanCompleted(path: String, uri: Uri) {
+      override def onScanCompleted(path: String, uri: Uri): Unit = {
         if (uri != null) {
           ctx.sendBroadcast(new Intent(action, uri))
         } else {
@@ -205,23 +205,23 @@ class LCameraManager(implicit private[this] val cameraManager: CameraManager, lo
     val lcamera = NoneVar[LCamera]
 
     cameraManager.openCamera(cameraId, new CameraDevice.StateCallback {
-      override def onOpened(device: CameraDevice) {
+      override def onOpened(device: CameraDevice): Unit = {
         debug(s"Camera opened: $device")
         lcamera() = Option(new LCamera(device))
       }
 
-      override def onError(device: CameraDevice, error: Int) {
+      override def onError(device: CameraDevice, error: Int): Unit = {
         debug(s"Camera error: $device, $error")
         longToast(s"Unable to open camera ($error)")
         lcamera() foreach { _.close() }
       }
 
-      override def onDisconnected(device: CameraDevice) {
+      override def onDisconnected(device: CameraDevice): Unit = {
         debug(s"Camera disconnected: $device")
         lcamera() foreach { _.close() }
       }
 
-      override def onClosed(device: CameraDevice) {
+      override def onClosed(device: CameraDevice): Unit = {
         debug(s"Camera closed: $device")
         lcamera() = None
       }
@@ -276,7 +276,7 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
     def lastExposureTime: Rx[Long] = lastExposureTimeVar
     def lastIso: Rx[Int] = lastIsoVar
 
-    protected[this] def setupRequest(request: CaptureRequest.Builder, focus: Focus, exposure: Exposure) {
+    protected[this] def setupRequest(request: CaptureRequest.Builder, focus: Focus, exposure: Exposure): Unit = {
       request.set(CONTROL_MODE, CONTROL_MODE_AUTO)
       focus match {
         case AutoFocus =>
@@ -297,14 +297,14 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
       request.set(SENSOR_FRAME_DURATION, minFrameDuration)
     }
 
-    def setupPreview(focus: Focus, exposure: Exposure) {
+    def setupPreview(focus: Focus, exposure: Exposure): Unit = {
       debug(s"Starting preview using $session")
       val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
       setupRequest(request, focus, exposure)
 
       request.addTarget(previewSurface)
       session.setRepeatingRequest(request.build(), new CameraCaptureSession.CaptureCallback {
-        override def onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
+        override def onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult): Unit = {
           lastFocusDistanceVar() = result.get(CaptureResult.LENS_FOCUS_DISTANCE)
           lastExposureTimeVar() = result.get(CaptureResult.SENSOR_EXPOSURE_TIME)
           lastIsoVar() = result.get(CaptureResult.SENSOR_SENSITIVITY)
@@ -312,7 +312,7 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
       }, null)
     }
 
-    def triggerMetering(mr: MeteringRectangle, focus: Focus, exposure: Exposure) {
+    def triggerMetering(mr: MeteringRectangle, focus: Focus, exposure: Exposure): Unit = {
       debug(s"Triggering metering using $camera")
       val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
 
@@ -340,12 +340,12 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
 
       session.capture(request.build(), null, null)
     }
-    override def close() {
+    override def close(): Unit = {
       session.close()
     }
   }
 
-  private[this] def createSession(surfaces: List[Surface], onSuccess: CameraCaptureSession => CaptureSession) {
+  private[this] def createSession(surfaces: List[Surface], onSuccess: CameraCaptureSession => CaptureSession): Unit = {
     if (!(captureSessionVar() exists { !_.isCompleted } )) {
       debug(s"Creating capture session using $camera $surfaces")
       captureSession() foreach { _ onSuccess { case s => s.close() } }
@@ -353,32 +353,32 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
       val p = Promise[CaptureSession]()
       captureSessionVar() = Some(p.future)
       camera.createCaptureSession(surfaces, new CameraCaptureSession.StateCallback {
-        override def onConfigured(session: CameraCaptureSession) {
+        override def onConfigured(session: CameraCaptureSession): Unit = {
           debug(s"Capture session configured: $session")
           p success onSuccess(session)
           captureSessionVar.propagate()
         }
 
-        override def onConfigureFailed(session: CameraCaptureSession) {
+        override def onConfigureFailed(session: CameraCaptureSession): Unit = {
           debug("Capture session configuration failed")
           p failure new RuntimeException
           captureSessionVar.propagate()
         }
 
-        override def onClosed(session: CameraCaptureSession) {
+        override def onClosed(session: CameraCaptureSession): Unit = {
           debug(s"Capture session closed: $session")
         }
       }, null)
     }
   }
 
-  def openPhotoSession(previewSurface: Surface, maxImages: Int = 1) {
+  def openPhotoSession(previewSurface: Surface, maxImages: Int = 1): Unit = {
     val jpegImageReader = ImageReader.newInstance(jpegSize.getWidth, jpegSize.getHeight, ImageFormat.JPEG, maxImages)
     val rawImageReader = ImageReader.newInstance(rawSize.getWidth, rawSize.getHeight, ImageFormat.RAW_SENSOR, maxImages)
     createSession(List(previewSurface, jpegImageReader.getSurface, rawImageReader.getSurface), (session) => new PhotoSession(session, previewSurface, jpegImageReader, rawImageReader))
   }
 
-  def openBurstSession(previewSurface: Surface, rawYuv: RawOrYuv, maxImages: Int = 7) {
+  def openBurstSession(previewSurface: Surface, rawYuv: RawOrYuv, maxImages: Int = 7): Unit = {
     val imageReader = rawYuv match {
       case Raw => ImageReader.newInstance(rawSize.getWidth, rawSize.getHeight, ImageFormat.RAW_SENSOR, maxImages)
       case Yuv => ImageReader.newInstance(yuvSize.getWidth, yuvSize.getHeight, ImageFormat.YUV_420_888, maxImages)
@@ -386,12 +386,12 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
     createSession(List(previewSurface, imageReader.getSurface), (session) => new BurstSession(session, previewSurface, imageReader, rawYuv))
   }
 
-  def openBulbSession(previewSurface: Surface) {
+  def openBulbSession(previewSurface: Surface): Unit = {
     val imageReader = ImageReader.newInstance(rawSize.getWidth, rawSize.getHeight, ImageFormat.RAW_SENSOR, 1)
     createSession(List(previewSurface, imageReader.getSurface), (session) => new BulbSession(session, previewSurface, imageReader))
   }
 
-  def openVideoSession(previewSurface: Surface, vc: VideoConfiguration) {
+  def openVideoSession(previewSurface: Surface, vc: VideoConfiguration): Unit = {
     val mr = new MyMediaRecorder(vc, windowManager.getDefaultDisplay.getRotation)
     createSession(List(previewSurface, mr.getSurface), (session) => new VideoSession(session, previewSurface, mr))
   }
@@ -405,14 +405,14 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
     private [this] val rawImageChannel = new Channel[Image]
 
     jpegImageReader.setOnImageAvailableListener(new OnImageAvailableListener {
-      override def onImageAvailable(reader: ImageReader) { jpegImageChannel.write(reader.acquireNextImage()) }
+      override def onImageAvailable(reader: ImageReader): Unit = { jpegImageChannel.write(reader.acquireNextImage()) }
     }, null)
 
     rawImageReader.setOnImageAvailableListener(new OnImageAvailableListener {
-      override def onImageAvailable(reader: ImageReader) { rawImageChannel.write(reader.acquireNextImage()) }
+      override def onImageAvailable(reader: ImageReader): Unit = { rawImageChannel.write(reader.acquireNextImage()) }
     }, null)
 
-    def capture(focus: Focus, exposure: Exposure, successHandler: (TotalCaptureResult, Image, Image) => Unit, orientation: Int = windowManager.getDefaultDisplay.getRotation) {
+    def capture(focus: Focus, exposure: Exposure, successHandler: (TotalCaptureResult, Image, Image) => Unit, orientation: Int = windowManager.getDefaultDisplay.getRotation): Unit = {
       if (!capturing()) {
         debug(s"Starting capture using $camera")
         capturingVar() = true
@@ -427,7 +427,7 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
 
         debug(s"Capturing with $session")
         session.capture(request.build(), new CameraCaptureSession.CaptureCallback {
-          override def onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
+          override def onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult): Unit = {
             debug(s"Capture completed: " +
               s"focus = ${result.get(CaptureResult.LENS_FOCUS_DISTANCE)}/${request.get(LENS_FOCUS_DISTANCE)} " +
               s"iso = ${result.get(CaptureResult.SENSOR_SENSITIVITY)}/${request.get(SENSOR_SENSITIVITY)} " +
@@ -446,7 +446,7 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
             f onComplete { _ => runOnUiThread { capturingVar() = false } }
           }
 
-          override def onCaptureFailed(session: CameraCaptureSession, request: CaptureRequest, failure: CaptureFailure) {
+          override def onCaptureFailed(session: CameraCaptureSession, request: CaptureRequest, failure: CaptureFailure): Unit = {
             debug("Capture failed")
             capturingVar() = false
           }
@@ -464,11 +464,11 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
     private [this] val resultChannel = new Channel[Either[TotalCaptureResult, CaptureFailure]]
 
     imageReader.setOnImageAvailableListener(new OnImageAvailableListener {
-      override def onImageAvailable(reader: ImageReader) { imageChannel.write(reader.acquireNextImage()) }
+      override def onImageAvailable(reader: ImageReader): Unit = { imageChannel.write(reader.acquireNextImage()) }
     }, null)
 
     case class Request(focus: Focus, exposure: Exposure, handler: (TotalCaptureResult, Image) => Unit)
-    def burstCapture(requests: List[Request], orientation: Int = windowManager.getDefaultDisplay.getRotation) {
+    def burstCapture(requests: List[Request], orientation: Int = windowManager.getDefaultDisplay.getRotation): Unit = {
       if (!capturing()) {
         debug(s"Starting burst capture using $camera")
         capturingVar() = true
@@ -486,7 +486,7 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
 
         debug(s"Burst capturing with $session")
         session.captureBurst(builders map { _.build() }, new CameraCaptureSession.CaptureCallback {
-          override def onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
+          override def onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult): Unit = {
             debug(s"Capture completed: " +
               s"focus = ${result.get(CaptureResult.LENS_FOCUS_DISTANCE)}/${request.get(LENS_FOCUS_DISTANCE)} " +
               s"iso = ${result.get(CaptureResult.SENSOR_SENSITIVITY)}/${request.get(SENSOR_SENSITIVITY)} " +
@@ -495,7 +495,7 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
             resultChannel.write(Left(result))
           }
 
-          override def onCaptureFailed(session: CameraCaptureSession, request: CaptureRequest, failure: CaptureFailure) {
+          override def onCaptureFailed(session: CameraCaptureSession, request: CaptureRequest, failure: CaptureFailure): Unit = {
             debug("Capture failed")
             resultChannel.write(Right(failure))
           }
@@ -527,10 +527,10 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
     private [this] val imageChannel = new Channel[Image]
 
     imageReader.setOnImageAvailableListener(new OnImageAvailableListener {
-      override def onImageAvailable(reader: ImageReader) { imageChannel.write(reader.acquireNextImage()) }
+      override def onImageAvailable(reader: ImageReader): Unit = { imageChannel.write(reader.acquireNextImage()) }
     }, null)
 
-    def startCapturing(focus: Focus, exposure: Exposure, handler: (TotalCaptureResult, Image, Int) => Unit, orientation: Int = windowManager.getDefaultDisplay.getRotation) {
+    def startCapturing(focus: Focus, exposure: Exposure, handler: (TotalCaptureResult, Image, Int) => Unit, orientation: Int = windowManager.getDefaultDisplay.getRotation): Unit = {
       if (!capturing()) {
         debug(s"Starting bulb capture using $camera")
         capturingVar() = true
@@ -546,7 +546,7 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
 
             debug(s"bulb capturing with $session")
             session.capture(request.build, new CameraCaptureSession.CaptureCallback {
-              override def onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
+              override def onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult): Unit = {
                 debug(s"Capture completed: " +
                   s"focus = ${result.get(CaptureResult.LENS_FOCUS_DISTANCE)}/${request.get(LENS_FOCUS_DISTANCE)} " +
                   s"iso = ${result.get(CaptureResult.SENSOR_SENSITIVITY)}/${request.get(SENSOR_SENSITIVITY)} " +
@@ -567,7 +567,7 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
                 }
               }
 
-              override def onCaptureFailed(session: CameraCaptureSession, request: CaptureRequest, failure: CaptureFailure) {
+              override def onCaptureFailed(session: CameraCaptureSession, request: CaptureRequest, failure: CaptureFailure): Unit = {
                 debug("Capture failed")
                 capturingVar() = false
                 keepCapturing = false
@@ -589,7 +589,7 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
     private[this] val recordingVar = Var(false)
     def recording: Rx[Boolean] = recordingVar
 
-    override def setupPreview(focus: Focus, exposure: Exposure) {
+    override def setupPreview(focus: Focus, exposure: Exposure): Unit = {
       debug(s"Starting preview using $session")
       val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_RECORD)
       setupRequest(request, focus, exposure)
@@ -598,7 +598,7 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
       session.setRepeatingRequest(request.build(), null, null)
     }
 
-    def startRecording(focus: Focus, exposure: Exposure) {
+    def startRecording(focus: Focus, exposure: Exposure): Unit = {
       setupPreview(focus, exposure)
 
       debug("Starting recording")
@@ -609,7 +609,7 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
       recordingVar() = true
     }
 
-    def stopRecording() {
+    def stopRecording(): Unit = {
       debug("Stop recording")
       try {
         mr.stop()
@@ -621,14 +621,14 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
       recordingVar() = false
     }
 
-    override def close() {
+    override def close(): Unit = {
       super.close()
       mr.reset()
       mr.release()
     }
   }
 
-  override def close() {
+  override def close(): Unit = {
     super.close()
     captureSession() foreach { _ onSuccess { case s => s.close() } }
     camera.close()
@@ -755,11 +755,11 @@ class MainActivity extends SActivity with Observable {
 
   lazy val captureButton = new Fab(ctx) with TraitImageButton[Fab] {
     val basis = this
-    def fadeTo(color: Int, drawable: Int) {
+    def fadeTo(color: Int, drawable: Int): Unit = {
       imageDrawable = drawable
       val anim = ObjectAnimator.ofArgb(this, "backgroundColor", background.asInstanceOf[ColorDrawable].getColor, color)
       anim.addListener(new AnimatorListenerAdapter() {
-        override def onAnimationEnd(animator: Animator) { backgroundColor = color }
+        override def onAnimationEnd(animator: Animator): Unit = { backgroundColor = color }
       })
       anim.setDuration(150)
       anim.start()
@@ -860,11 +860,11 @@ class MainActivity extends SActivity with Observable {
     }
   }
 
-  override def onCreate(savedInstanceState: Bundle) {
+  override def onCreate(savedInstanceState: Bundle): Unit = {
     super.onCreate(savedInstanceState)
 
     contentView = new SRelativeLayout {
-      def toggleToolbar(v: View, others: List[View]) {
+      def toggleToolbar(v: View, others: List[View]): Unit = {
         for { v <- others if v.enabled } {
           slideDownHide(v)
         }
@@ -1054,7 +1054,7 @@ class MainActivity extends SActivity with Observable {
     }
   }}
 
-  override def onResume() {
+  override def onResume(): Unit = {
     super.onResume()
 
     val lcameraManager = new LCameraManager
@@ -1063,13 +1063,13 @@ class MainActivity extends SActivity with Observable {
     orientationEventListener.enable()
   }
 
-  override def onPause() {
+  override def onPause(): Unit = {
     super.onPause()
     lcamera() foreach { _.close() }
     orientationEventListener.disable()
   }
 
-  override def onStop() {
+  override def onStop(): Unit = {
     super.onStop()
 
     val prefs = new Preferences(getSharedPreferences("lcamera", Context.MODE_PRIVATE))
@@ -1097,7 +1097,7 @@ class MainActivity extends SActivity with Observable {
     }
   }
 
-  def saveDngFile(filePath: String, characteristics: CameraCharacteristics, result: TotalCaptureResult, image: Image, orientation: Int) {
+  def saveDngFile(filePath: String, characteristics: CameraCharacteristics, result: TotalCaptureResult, image: Image, orientation: Int): Unit = {
     val dngCreator = new DngCreator(characteristics, result).setOrientation(orientation)
     dngCreator.writeImage(new FileOutputStream(filePath), image)
     dngCreator.close()
@@ -1105,7 +1105,7 @@ class MainActivity extends SActivity with Observable {
     debug(s"DNG saved: $filePath")
   }
 
-  def saveYuvAsJpeg(filePath: String, image: Image) {
+  def saveYuvAsJpeg(filePath: String, image: Image): Unit = {
     val bytes = List(0, 2) map { n => byteBufferToByteArray(image.getPlanes()(n).getBuffer) } reduceLeft { _ ++ _ }
     val yuvImage = new YuvImage(bytes, ImageFormat.NV21, image.getWidth, image.getHeight, null)
 
@@ -1132,7 +1132,7 @@ class MainActivity extends SActivity with Observable {
     resId
   }
 
-  def showSettingsDialog() {
+  def showSettingsDialog(): Unit = {
     new AlertDialogBuilder {
       setView(new SVerticalLayout {
         padding(24.dip, 16.dip, 24.dip, 16.dip)
@@ -1243,7 +1243,7 @@ class MainActivity extends SActivity with Observable {
               }
 
               setAdapter(videoConfigurationAdapter, new DialogInterface.OnClickListener {
-                override def onClick(dialog: DialogInterface, which: Int) { userVideoConfiguration() = videoConfigurations(which) }
+                override def onClick(dialog: DialogInterface, which: Int): Unit = { userVideoConfiguration() = videoConfigurations(which) }
               })
             }.show()
           }

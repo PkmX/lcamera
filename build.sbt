@@ -33,7 +33,7 @@ proguardOptions in Android ++=
       , "-dontwarn sun.misc.Unsafe"
       )
 
-scalacOptions in Compile ++= Seq("-feature", "-deprecation")
+scalacOptions in Compile ++= Seq("-feature", "-deprecation", "-Xfuture", "-Ywarn-dead-code", "-Ywarn-unused")
 
 run <<= run in Android
 
