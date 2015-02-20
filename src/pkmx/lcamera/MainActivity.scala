@@ -863,10 +863,6 @@ class MainActivity extends SActivity with Observable {
   override def onCreate(savedInstanceState: Bundle) {
     super.onCreate(savedInstanceState)
 
-    if (Log.isLoggable("lcamera", Log.VERBOSE)) {
-      dumpCameraInfo()
-    }
-
     contentView = new SRelativeLayout {
       def toggleToolbar(v: View, others: List[View]) {
         for { v <- others if v.enabled } {
@@ -1098,27 +1094,6 @@ class MainActivity extends SActivity with Observable {
       true
     } else {
       super.onKeyDown(keyCode, event)
-    }
-  }
-
-  def dumpCameraInfo() {
-    for { cameraId <- cameraManager.getCameraIdList } {
-      verbose(s"===== Camera $cameraId =====")
-      val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-      for { key <- characteristics.getKeys } {
-        verbose(key.getName)
-        characteristics.get(key) match {
-          case scm: StreamConfigurationMap =>
-            scm.getOutputFormats foreach { format =>
-              verbose(s"Format ${format.toString}")
-              Option(scm.getOutputSizes(format)) foreach { _ foreach { size =>
-                verbose(s"$size: ${scm.getOutputMinFrameDuration(format, size)} ${scm.getOutputStallDuration(format, size)}")
-              }}
-            }
-          case xs: Array[_] => xs foreach { x => verbose(x.toString) }
-          case x => verbose(x.toString)
-        }
-      }
     }
   }
 
