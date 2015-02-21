@@ -20,7 +20,8 @@ Slow motion video recorded with a Nexus 5: https://www.youtube.com/watch?v=iKAvN
 * Manual exposure time (0.8" to 1/75000)
 * Manual ISO (40 to 10000)
 * DNG output support
-* 30-fps full-resolution burst capture with focus stacking & exposure bracketing
+* 30-fps full-resolution burst mode (up to 20 images) with optional exposure bracketing
+* Semi-bulb mode
 * 30-fps full-resolution (3264x2448) video recording on Nexus 5
 * 30-fps 4K UHD (3840x2160) video recording on Nexus 6
 * Experimental 60-fps video recording at 1080p on Nexus 5
@@ -45,7 +46,7 @@ Just use it like any camera! Tap other four button at the bottom to bring up set
  * ISO: Control the sensitivity of the sensor.
 * Mode
  * Photo mode: Take a single capture at the highest quality possible.
- * Burst mode: Capture up to 7 image at maximum resolution at 30 fps.
+ * Burst mode: Capture up to 20 image at maximum resolution at 30 fps with optional exposure bracketing.
  * Bulb mode: Keep capturing DNG images until manually stopped. Note that as the Nexus 5's internal memory writing speed cannot keep up with the rate the camera pushes out new images even at the slowest shutter speed, the camera waits until the previous image is saved before starting a new capture to avoid filling the buffers.
  * Video mode: Videos are encoded with H.264/AVC for video and 44.1khz 320kbps AAC-LC for audio in MP4 container. Focus distance and exposure settings are adjustable during recording.
 * Settings
