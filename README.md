@@ -37,27 +37,27 @@ You can either install the pre-built debug APK from the [release](https://github
 Just use it like any camera! Tap other four button at the bottom to bring up settings:
 
 * Focus
- * AF/MF: Whether the auto focus mechanism is enabled (tap on the preview to focus on a specific point).
- * Focus Distance: Manually control focus distance if auto focus is turned off.
+    * AF/MF: Whether the auto focus mechanism is enabled (tap on the preview to focus on a specific point).
+    * Focus Distance: Manually control focus distance if auto focus is turned off.
 * Exposure
- * Tap on either shutter speed or ISO values to enable manual exposure control.
- * Aperture: Show the aperture of the camera. Currently, all devices that support the new `camera2` API have fixed aperture, and therefore this setting cannot be changed.
- * Shutter Speed: Control shutter speed of the sensor. (Setting a slow shutter speed will affect preview frame rate)
- * ISO: Control the sensitivity of the sensor.
+    * Tap on either shutter speed or ISO values to enable manual exposure control.
+    * Aperture: Show the aperture of the camera. Currently, all devices that support the new `camera2` API have fixed aperture, and therefore this setting cannot be changed.
+    * Shutter Speed: Control shutter speed of the sensor. (Setting a slow shutter speed will affect preview frame rate)
+    * ISO: Control the sensitivity of the sensor.
 * Mode
- * Photo mode: Take a single capture at the highest quality possible.
- * Burst mode: Capture up to 20 image at maximum resolution at 30 fps with optional exposure bracketing.
- * Bulb mode: Keep capturing DNG images until manually stopped. Note that as the Nexus 5's internal memory writing speed cannot keep up with the rate the camera pushes out new images even at the slowest shutter speed, the camera waits until the previous image is saved before starting a new capture to avoid filling the buffers.
- * Video mode: Videos are encoded with H.264/AVC for video and 44.1khz 320kbps AAC-LC for audio in MP4 container. Focus distance and exposure settings are adjustable during recording.
+    * Photo mode: Take a single capture at the highest quality possible.
+    * Burst mode: Capture up to 20 image at maximum resolution at 30 fps with optional exposure bracketing.
+    * Bulb mode: Keep capturing DNG images until manually stopped. Note that as the Nexus 5's internal memory writing speed cannot keep up with the rate the camera pushes out new images even at the slowest shutter speed, the camera waits until the previous image is saved before starting a new capture to avoid filling the buffers.
+    * Video mode: Videos are encoded with H.264/AVC for video and 44.1khz 320kbps AAC-LC for audio in MP4 container. Focus distance and exposure settings are adjustable during recording.
 * Settings
- * Photo Mode:
-   * Save DNG: Toggle whether a DNG image is saved in single capture mode.
- * Burst Mode:
-   * No. of Images: Number of images to be captured in burst.
-   * Exposure Bracketing: Number of stops that will be varied between each capture in a burst sequence. Only the shutter speed is varied, the ISO stays the same. For example, with 7 images per burst and 1/3 EV exposure bracketing setting, the camera will capture 7 images at -1, -2/3, -1/3, 0, 1/3, 2/3, 1 EV.
-   * Save DNG: Specify the output format for burst capture.
- * Video Mode
-   * Video Resolution: Configure video resolution, fps and encoding bitrate. (See below for 60fps recording)
+    * Photo Mode:
+        * Save DNG: Toggle whether a DNG image is saved in single capture mode.
+    * Burst Mode:
+        * No. of Images: Number of images to be captured in burst.
+        * Exposure Bracketing: Number of stops that will be varied between each capture in a burst sequence. Only the shutter speed is varied, the ISO stays the same. For example, with 7 images per burst and 1/3 EV exposure bracketing setting, the camera will capture 7 images at -1, -2/3, -1/3, 0, 1/3, 2/3, 1 EV.
+        * Save DNG: Specify the output format for burst capture.
+    * Video Mode
+        * Video Resolution: Configure video resolution, fps and encoding bitrate. (See below for 60fps recording)
    Switch between photo capturing and video recording mode.
 
 If you are looking for a stopwatch to test the burst capture feature, check out [this jsfiddle](http://jsfiddle.net/jw2z5eeu/).
