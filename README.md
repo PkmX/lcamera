@@ -52,10 +52,11 @@ Just use it like any camera! Tap other four button at the bottom to bring up set
  * Photo Mode:
    * Save DNG: Toggle whether a DNG image is saved in single capture mode.
  * Burst Mode:
-   * Exposure Bracketing: If enabled, the camera will capture a series of 7 images ranging from -3 to +3 EV of the standard expousre. (Only the shutter speed is varied, the ISO stays the same)
+   * No. of Images: Number of images to be captured in burst.
+   * Exposure Bracketing: Number of stops that will be varied between each capture in a burst sequence. Only the shutter speed is varied, the ISO stays the same. For example, with 7 images per burst and 1/3 EV exposure bracketing setting, the camera will capture 7 images at -1, -2/3, -1/3, 0, 1/3, 2/3, 1 EV.
    * Save DNG: Specify the output format for burst capture.
  * Video Mode
-   * Video Resolution: Configurate video resolution, fps and encoding bitrate. (See below for 60fps recording)
+   * Video Resolution: Configure video resolution, fps and encoding bitrate. (See below for 60fps recording)
    Switch between photo capturing and video recording mode.
 
 If you are looking for a stopwatch to test the burst capture feature, check out [this jsfiddle](http://jsfiddle.net/jw2z5eeu/).

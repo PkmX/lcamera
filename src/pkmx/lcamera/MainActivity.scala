@@ -7,6 +7,7 @@ import java.text.DecimalFormat
 import scala.concurrent.{Promise, Channel, ExecutionContext, Future}
 import scala.collection.immutable.Vector
 import scala.language.{existentials, implicitConversions, reflectiveCalls}
+import scala.util.Try
 import scala.util.control.NonFatal
 
 import android.animation._
@@ -199,16 +200,17 @@ object Utils {
     }
   }
 
-  def runOnUiThread(f: => Unit): Unit = {
+  def runOnUiThread[T](f: => T): Future[T] = {
     if (uiThread == Thread.currentThread) {
-      f
+      Future.fromTry(Try(f))
     } else {
-      handler.post(new Runnable() {
-        def run(): Unit = f
+      val p = Promise[T]()
+      handler.post(new Runnable {
+        override def run(): Unit = p.complete(Try(f))
       })
+      p.future
     }
   }
-
 }
 
 import Utils._
@@ -694,9 +696,11 @@ class MainActivity extends SActivity with Observable {
   }}
 
   val saveDng = Var(true)
+  val minBursts = 2
+  val maxBursts = 20
+  val numBursts = Var(3)
   val burstCaptureRawYuv = Var[RawOrYuv](Yuv)
-  val burst = Var(1)
-  val exposureBracketing = Var(false)
+  val exposureBracketing = Var(0)
   val isBurstSession = Rx { lcamera() exists { camera => camera.captureSession() flatMap { _.toOption } exists { _.isInstanceOf[camera.BurstSession] } } }
 
   val autoFocus = Var(true)
@@ -807,11 +811,20 @@ class MainActivity extends SActivity with Observable {
         val filePathBase = Utils.createPathIfNotExist(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + "/Camera/") + time.format("IMG_%Y%m%d_%H%M%S")
         val orientation = windowManager.getDefaultDisplay.getRotation
 
-        val requests = for (n <- 1 to 7) yield bs.Request(focus(), exposure(),
-          bs.rawYuv match {
-            case Raw => (result, image) => saveDngFile(s"${filePathBase}_$n.dng", camera.characteristics, result, image, orientation)
-            case Yuv => (result, image) => saveYuvAsJpeg(s"${filePathBase}_$n.jpg", image) // TODO
-        })
+        val requests = for (n <- 1 to numBursts()) yield {
+          val exp = if (exposureBracketing() == 0) exposure() else {
+            val computeExposureTime = (t: Long) => camera.exposureTimeRange.clamp((t * Math.pow(2, (numBursts() / 2 - n) * (exposureBracketing() / 3.0))).toLong)
+            exposure() match {
+              case AutoExposure => ManualExposure(computeExposureTime(bs.lastExposureTime()), bs.lastIso())
+              case me: ManualExposure => me.copy(exposureDuration = computeExposureTime(me.exposureDuration))
+          } }
+
+          bs.Request(focus(), exp,
+            bs.rawYuv match {
+              case Raw => (result, image) => saveDngFile(s"${filePathBase}_$n.dng", camera.characteristics, result, image, orientation)
+              case Yuv => (result, image) => saveYuvAsJpeg(s"${filePathBase}_$n.jpg", image)
+            })
+        }
 
         bs.burstCapture(requests.toList)
       case Some(bs: camera.BulbSession) => if (!bs.capturing()) {
@@ -920,16 +933,6 @@ class MainActivity extends SActivity with Observable {
           textColor = Colors.grey600
         }.padding(8.dip, 16.dip, 8.dip, 16.dip).wrap)
 
-        def makeButton(drawableRes: Int, rxEnable: Rx[Boolean], f: => Unit): SImageButton = new SImageButton {
-          backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
-          padding(4.dip)
-          observe { rxEnable foreach { en =>
-            enabled = en
-            imageDrawable = if (en) drawableRes else disabledTint(drawableRes)
-          } }
-          onClick(f)
-        }
-
         val prevExposureTime = Rx { (validExposureTimes() filter { _ > exposureTime() }).lastOption }
         += (makeButton(R.drawable.ic_navigation_chevron_left, Rx { !autoExposure() && prevExposureTime().nonEmpty }, { prevExposureTime() foreach { exposureTime() = _ } }))
         += (new STextView {
@@ -978,7 +981,7 @@ class MainActivity extends SActivity with Observable {
         }
 
         += (new ModeButton(R.drawable.ic_photo_mode, { (camera, surface) => camera.openPhotoSession(surface) }))
-        += (new ModeButton(R.drawable.ic_burst_mode, { (camera, surface) => camera.openBurstSession(surface, burstCaptureRawYuv(), 20) }))
+        += (new ModeButton(R.drawable.ic_burst_mode, { (camera, surface) => camera.openBurstSession(surface, burstCaptureRawYuv(), maxBursts) }))
         += (new ModeButton(R.drawable.ic_bulb_mode , { (camera, surface) => camera.openBulbSession(surface) }))
         += (new ModeButton(R.drawable.ic_video_mode, { (camera, surface) => camera.openVideoSession(surface, userVideoConfiguration()) }))
       }
@@ -1041,8 +1044,8 @@ class MainActivity extends SActivity with Observable {
     prefs.Boolean.autoExposure.foreach { autoExposure() = _ }
     prefs.Int.iso.foreach { iso() = _ }
     prefs.Long.exposureTime.foreach { exposureTime() = _ }
-    prefs.Int.burst.foreach { burst() = _ }
-    prefs.Boolean.exposureBracketing.foreach { exposureBracketing() = _ }
+    prefs.Int.numBursts.foreach { numBursts() = _ }
+    prefs.Int.exposureBracketing.foreach { exposureBracketing() = _ }
     for { vcWidth <- prefs.Int.vcWidth
           vcHeight <- prefs.Int.vcHeight
           vcFps <- prefs.Int.vcFps
@@ -1092,7 +1095,7 @@ class MainActivity extends SActivity with Observable {
     prefs.autoExposure = autoExposure()
     prefs.iso = iso()
     prefs.exposureTime = exposureTime()
-    prefs.burst = burst()
+    prefs.numBursts = numBursts()
     prefs.exposureBracketing = exposureBracketing()
     prefs.vcWidth = userVideoConfiguration().width
     prefs.vcHeight = userVideoConfiguration().height
@@ -1131,6 +1134,16 @@ class MainActivity extends SActivity with Observable {
     outputStream.close()
     mediaScan(filePath, ACTION_NEW_PICTURE)
     debug(s"JPEG saved: $filePath")
+  }
+
+  def makeButton(drawableRes: Int, rxEnable: Rx[Boolean], f: => Unit): SImageButton = new SImageButton {
+    backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
+    padding(4.dip)
+    observe { rxEnable foreach { en =>
+      enabled = en
+      imageDrawable = if (en) drawableRes else disabledTint(drawableRes)
+    } }
+    onClick(f)
   }
 
   def disabledTint(drawable: Int): Drawable = {
@@ -1180,19 +1193,46 @@ class MainActivity extends SActivity with Observable {
           gravity = Gravity.CENTER_VERTICAL
         }.<<(MATCH_PARENT, 32.dip).>>)
 
-        += (new SRelativeLayout {
+        += (new SLinearLayout {
+          gravity = Gravity.CENTER_VERTICAL
           padding(0.dip, 16.dip, 0.dip, 16.dip)
 
           += (new STextView {
-            text = "Exposure Bracketing"
+            text = "No. of Images"
             textColor = Colors.grey300
             textSize = 16.sp
-          }.<<.wrap.alignParentLeft.centerVertical.>>)
+          }.<<.fw.Weight(1.0f).>>)
 
-          += (new SCheckBox {
-            observe { exposureBracketing foreach { setChecked } }
-            onCheckedChanged { (v: View, checked: Boolean) => exposureBracketing() = checked }
-          }.<<.wrap.alignParentRight.centerVertical.>>)
+          += (makeButton(R.drawable.ic_navigation_chevron_left, Rx { numBursts() > minBursts }, { numBursts() = Math.max(numBursts() - 1, minBursts) }).wrap)
+          += (new STextView {
+            observe { numBursts foreach { n => text = n.toString } }
+            gravity = Gravity.CENTER
+          }.wrap)
+          += (makeButton(R.drawable.ic_navigation_chevron_right, Rx { numBursts() < maxBursts }, { numBursts() = Math.min(numBursts() + 1, maxBursts) }).wrap)
+        })
+
+        += (new SLinearLayout {
+          gravity = Gravity.CENTER_VERTICAL
+          padding(0.dip, 16.dip, 0.dip, 16.dip)
+
+          def evToString(ev: Int): String = {
+            if (ev == 0) "Off"
+            else if (ev % 3 == 0) s"${ev / 3} EV"
+            else s"$ev/3 EV"
+          }
+
+          += (new STextView {
+            text = "Exp. Bracketing"
+            textColor = Colors.grey300
+            textSize = 16.sp
+          }.<<.fw.Weight(1.0f).>>)
+
+          += (makeButton(R.drawable.ic_navigation_chevron_left, Rx { exposureBracketing() > 0 }, { exposureBracketing() = Math.max(exposureBracketing() - 1, 0) }).wrap)
+          += (new STextView {
+            observe { exposureBracketing foreach { ev => text = evToString(ev) } }
+            gravity = Gravity.CENTER
+          }.<<(48.sp, WRAP_CONTENT).>>)
+          += (makeButton(R.drawable.ic_navigation_chevron_right, Rx { exposureBracketing() < 6 }, { exposureBracketing() = Math.min(exposureBracketing() + 1, 6) }).wrap)
         })
 
         += (new SRelativeLayout {
