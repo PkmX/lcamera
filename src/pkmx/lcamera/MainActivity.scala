@@ -835,7 +835,15 @@ class MainActivity extends SActivity with Observable {
 
         bs.startCapturing(focus(), exposure(), (result, image, n) => saveDngFile(s"${filePathBase}_$n.dng", camera.characteristics, result, image, orientation))
       } else bs.stopCapturing()
-      case Some(vs: camera.VideoSession) => if (!vs.recording()) vs.startRecording(focus(), exposure()) else vs.stopRecording()
+      case Some(vs: camera.VideoSession) =>
+        if (!vs.recording()) {
+          vs.startRecording(focus(), exposure())
+        } else {
+          vs.stopRecording()
+          for { surface <- previewSurface() } {
+            camera.openVideoSession(surface, userVideoConfiguration())
+          }
+        }
       case _ =>
     }}}
 
