@@ -740,6 +740,7 @@ class MainActivity extends SActivity with Observable {
   } } }
 
   val userVideoConfiguration = Var(videoConfigurations(0))
+  val videoConfiguration = Rx { availableVideoConfigurations() find { _ == userVideoConfiguration() } orElse availableVideoConfigurations().lift(0) }
 
   lazy val textureView = new STextureView {
     onTouch((v, e) => {
@@ -838,8 +839,8 @@ class MainActivity extends SActivity with Observable {
           vs.startRecording(focus(), exposure())
         } else {
           vs.stopRecording()
-          for { surface <- previewSurface() } {
-            camera.openVideoSession(surface, userVideoConfiguration())
+          for { surface <- previewSurface() ; vc <- videoConfiguration() } {
+            camera.openVideoSession(surface, vc)
           }
         }
       case _ =>
@@ -989,7 +990,7 @@ class MainActivity extends SActivity with Observable {
         += (new ModeButton(R.drawable.ic_photo_mode, { (camera, surface) => camera.openPhotoSession(surface) }))
         += (new ModeButton(R.drawable.ic_burst_mode, { (camera, surface) => camera.openBurstSession(surface, burstCaptureRawYuv(), maxBursts) }))
         += (new ModeButton(R.drawable.ic_bulb_mode , { (camera, surface) => camera.openBulbSession(surface) }))
-        += (new ModeButton(R.drawable.ic_video_mode, { (camera, surface) => camera.openVideoSession(surface, userVideoConfiguration()) }))
+        += (new ModeButton(R.drawable.ic_video_mode, { (camera, surface) => videoConfiguration() foreach { vc => camera.openVideoSession(surface, vc) } }))
       }
 
       val bottomBar = new SLinearLayout {
@@ -1057,7 +1058,7 @@ class MainActivity extends SActivity with Observable {
           vcFps <- prefs.Int.vcFps
           vcBitrate <- prefs.Int.vcBitrate } {
       val vc = new VideoConfiguration(vcWidth, vcHeight, vcFps, vcBitrate)
-      if (videoConfigurations contains vc)
+      if (availableVideoConfigurations() contains vc)
         userVideoConfiguration() = vc
     }
     prefs.Boolean.saveDng.foreach { saveDng() = _ }
@@ -1283,7 +1284,10 @@ class MainActivity extends SActivity with Observable {
           += (new STextView {
             textSize = 12.sp
             textColor = Colors.grey600
-            observe { userVideoConfiguration foreach { vc => text = vc.toString } }
+            observe { videoConfiguration foreach {
+              case Some(vc) => text = vc.toString
+              case None => text = "N/A"
+            } }
           }.wrap)
 
           onClick {
@@ -1295,7 +1299,7 @@ class MainActivity extends SActivity with Observable {
                   new STextView {
                     text = videoConfigurations(which).toString
                     textColor = videoConfigurationAdapter.isEnabled(which) match {
-                      case true => if (videoConfigurations(which) == userVideoConfiguration()) Colors.orange500 else Colors.grey300
+                      case true => if (videoConfiguration() contains videoConfigurations(which)) Colors.orange500 else Colors.grey300
                       case false => Colors.grey600
                     }
                     textSize = 16.sp
