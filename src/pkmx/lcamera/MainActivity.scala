@@ -665,239 +665,410 @@ object Colors {
 
 class MainActivity extends SActivity with Observable {
   import LCamera._
-
   override implicit val loggerTag = LoggerTag("lcamera")
-  val condensedTypeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
-  implicit lazy val cameraManager = getSystemService(Context.CAMERA_SERVICE).asInstanceOf[CameraManager]
-  val cameraId = Var("0")
-  val lcamera = NoneVar[LCamera]
-  lazy val previewSurface = Rx { for { camera <- lcamera() ; texture <- textureView.surfaceTexture() } yield {
-    val textureSize = camera.streamConfigurationMap.getOutputSizes(texture.getClass).filter(sz => sz <= camera.rawSize && sz <= new Size(1600, 1200))(0) // TODO: Obtain the size from camera configuration and screen size.
-    texture.setDefaultBufferSize(textureSize.getWidth, textureSize.getHeight)
-    new Surface(texture)
-  }}
 
-  val orientation = Var(Surface.ROTATION_0)
-  observe { for { (rotation, cameraOption, _) <- Rx { (orientation(), lcamera(), previewSurface()) } ; camera <- cameraOption } {
-    if (textureView.isAvailable) {
-      textureView.setTransform {
-        val textureSize = camera.streamConfigurationMap.getOutputSizes(textureView.getSurfaceTexture.getClass).filter(sz => sz <= camera.rawSize && sz <= new Size(1600, 1200))(0)
-        val viewRect = new RectF(0, 0, textureView.width, textureView.height)
-        val bufferRect = new RectF(0, 0, textureSize.getHeight, textureSize.getWidth)
-        bufferRect.offset(viewRect.centerX - bufferRect.centerX, viewRect.centerY - bufferRect.centerY)
-        val matrix = new Matrix()
-        matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.CENTER)
-        matrix.postRotate(rotation * 90, viewRect.centerX, viewRect.centerY)
-        matrix
-      }
-    }
-  }}
+  var performCapture: Option[(() => Unit)] = None
 
-  val saveDng = Var(true)
-  val minBursts = 2
-  val maxBursts = 20
-  val numBursts = Var(3)
-  val burstCaptureRawYuv = Var[RawOrYuv](Yuv)
-  val exposureBracketing = Var(0)
-  val isBurstSession = Rx { lcamera() exists { camera => camera.captureSession() flatMap { _.toOption } exists { _.isInstanceOf[camera.BurstSession] } } }
+  onCreate {
+    val condensedTypeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
 
-  val autoFocus = Var(true)
-  val focusDistance = Var(0f)
-  val focus = Rx[Focus] { if (autoFocus()) AutoFocus else new ManualFocus(focusDistance()) }
+    implicit val cameraManager = getSystemService(Context.CAMERA_SERVICE).asInstanceOf[CameraManager]
+    val lcamera = NoneVar[LCamera]
 
-  val autoExposure = Var(true)
-  val isos = Vector(40, 50, 80, 100, 200, 300, 400, 600, 800, 1000, 1600, 2000, 3200, 4000, 6400, 8000, 10000)
-  val validIsos = Rx { lcamera().toList flatMap { camera => isos filter { camera.isoRange contains _ }} }
-  val iso = Var(100)
-  val exposureTimes = Vector[Double](1.2, 2, 4, 6, 8, 15, 30, 60, 100, 125, 250, 500, 750, 1000, 1500, 2000, 3000, 4000, 5000, 6000, 8000, 10000, 20000, 30000, 75000) map { d => (1000000000l / d).toLong }
-  val validExposureTimes = Rx { lcamera().toList flatMap { camera => exposureTimes filter { camera.exposureTimeRange contains _ }} }
-  val exposureTime = Var(1000000000l / 30)
-  val exposure = Rx[Exposure] { if (autoExposure()) AutoExposure else new ManualExposure(exposureTime(), iso()) }
+    val saveDng = Var(true)
+    val minBursts = 2
+    val maxBursts = 20
+    val numBursts = Var(3)
+    val burstCaptureRawYuv = Var[RawOrYuv](Yuv)
+    val exposureBracketing = Var(0)
+    val isBurstSession = Rx { lcamera() exists { camera => camera.captureSession() flatMap { _.toOption } exists { _.isInstanceOf[camera.BurstSession] } } }
 
-  observe { for { (focus, exposure, session) <- Rx { (focus(), exposure(), lcamera() flatMap { _.captureSession() flatMap { _.toOption } } ) } } {
-    session foreach { _.setupPreview(focus, exposure) }
-  } }
+    val autoFocus = Var(true)
+    val focusDistance = Var(0f)
+    val focus = Rx[Focus] { if (autoFocus()) AutoFocus else new ManualFocus(focusDistance()) }
 
-  observe { for { (previewSurface, session) <- Rx { ( previewSurface(), lcamera() flatMap { _.captureSession() } ) } } {
-    previewSurface foreach { surface => if (session.isEmpty) { lcamera() foreach { _.openPhotoSession(surface) } } }
-  } }
+    val autoExposure = Var(true)
+    val isos = Vector(40, 50, 80, 100, 200, 300, 400, 600, 800, 1000, 1600, 2000, 3200, 4000, 6400, 8000, 10000)
+    val validIsos = Rx { lcamera().toList flatMap { camera => isos filter { camera.isoRange contains _ }} }
+    val iso = Var(100)
+    val exposureTimes = Vector[Double](1.2, 2, 4, 6, 8, 15, 30, 60, 100, 125, 250, 500, 750, 1000, 1500, 2000, 3000, 4000, 5000, 6000, 8000, 10000, 20000, 30000, 75000) map { d => (1000000000l / d).toLong }
+    val validExposureTimes = Rx { lcamera().toList flatMap { camera => exposureTimes filter { camera.exposureTimeRange contains _ }} }
+    val exposureTime = Var(1000000000l / 30)
+    val exposure = Rx[Exposure] { if (autoExposure()) AutoExposure else new ManualExposure(exposureTime(), iso()) }
 
-  val videoConfigurations = List(
-    new VideoConfiguration(3840, 2160, 30, 65000000),
-    new VideoConfiguration(3264, 2448, 30, 65000000),
-    new VideoConfiguration(3264, 2448, 30, 35000000),
-    new VideoConfiguration(1920, 1080, 60, 16000000),
-    new VideoConfiguration(1920, 1080, 30, 8000000),
-    new VideoConfiguration(1600, 1200, 60, 16000000),
-    new VideoConfiguration(1600, 1200, 30, 8000000),
-    new VideoConfiguration(1280, 720, 60, 10000000),
-    new VideoConfiguration(1280, 720, 30, 5000000),
-    new VideoConfiguration(800, 600, 120, 5000000))
+    observe { for { (focus, exposure, session) <- Rx { (focus(), exposure(), lcamera() flatMap { _.captureSession() flatMap { _.toOption } } ) } } {
+      session foreach { _.setupPreview(focus, exposure) }
+    } }
 
-  val availableVideoConfigurations = Rx { lcamera().toList flatMap { camera => videoConfigurations filter { vc =>
-    val size = new Size(vc.width, vc.height)
-    size <= camera.rawSize && camera.yuvSizes.contains(size) && vc.fps <= camera.rawFps
-  } } }
-
-  val userVideoConfiguration = Var(videoConfigurations(0))
-  val videoConfiguration = Rx { availableVideoConfigurations() find { _ == userVideoConfiguration() } orElse availableVideoConfigurations().lift(0) }
-
-  lazy val textureView = new STextureView {
-    onTouch((v, e) => {
-      if (e.getActionMasked == MotionEvent.ACTION_DOWN) {
-        lcamera() foreach { camera =>
-          camera.captureSession() flatMap { _.value flatMap { _.toOption } } foreach {
-            case session =>
-              if (autoFocus() || autoExposure()) {
-                val meteringRectangleSize = 300
-                val left = camera.activeArraySize.left
-                val right = camera.activeArraySize.right
-                val top = camera.activeArraySize.top
-                val bottom = camera.activeArraySize.bottom
-
-                val x = e.getX / v.getWidth
-                val y = e.getY / v.getHeight
-                val mr = new MeteringRectangle(
-                  0 max (left + (right - left) * y - meteringRectangleSize / 2).round,
-                  0 max (bottom - (bottom - top) * x - meteringRectangleSize / 2).round,
-                  meteringRectangleSize, meteringRectangleSize, 1
-                )
-
-                session.triggerMetering(mr, focus(), exposure())
-        } } }
-        true
-      } else false
-    })
-  }
-
-  lazy val captureButton = new Fab(ctx) with TraitImageButton[Fab] {
-    val basis = this
-    def fadeTo(color: Int, drawable: Int): Unit = {
-      imageDrawable = drawable
-      val anim = ObjectAnimator.ofArgb(this, "backgroundColor", background.asInstanceOf[ColorDrawable].getColor, color)
-      anim.addListener(new AnimatorListenerAdapter() {
-        override def onAnimationEnd(animator: Animator): Unit = { backgroundColor = color }
-      })
-      anim.setDuration(150)
-      anim.start()
+    onResume {
+      val lcameraManager = new LCameraManager
+      observe { lcameraManager.openLCamera("0") foreach { lcamera() = _ }}
     }
 
-    backgroundColor = Colors.grey300
-    scaleType = ScaleType.FIT_CENTER
-    onClick { lcamera() foreach { camera => camera.captureSession() flatMap { _.toOption } match {
-      case Some(ps: camera.PhotoSession) =>
-        val time = new Time
-        time.setToNow()
-        val filePathBase = Utils.createPathIfNotExist(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + "/Camera/") + time.format("IMG_%Y%m%d_%H%M%S")
-        val orientation = windowManager.getDefaultDisplay.getRotation
+    onPause {
+      lcamera() foreach { _.close() }
+    }
 
-        ps.capture(focus(), exposure(), { (result, jpegImage, rawImage) => {
-          val filePath = s"$filePathBase.jpg"
-          val jpegBuffer = jpegImage.getPlanes()(0).getBuffer
-          val bytes = new Array[Byte](jpegBuffer.capacity)
-          jpegBuffer.get(bytes)
-          new FileOutputStream(filePath).write(bytes)
-          mediaScan(filePath, ACTION_NEW_PICTURE)
-          debug(s"JPEG saved: $filePath")
+    val videoConfigurations = List(
+      new VideoConfiguration(3840, 2160, 30, 65000000),
+      new VideoConfiguration(3264, 2448, 30, 65000000),
+      new VideoConfiguration(3264, 2448, 30, 35000000),
+      new VideoConfiguration(1920, 1080, 60, 16000000),
+      new VideoConfiguration(1920, 1080, 30, 8000000),
+      new VideoConfiguration(1600, 1200, 60, 16000000),
+      new VideoConfiguration(1600, 1200, 30, 8000000),
+      new VideoConfiguration(1280, 720, 60, 10000000),
+      new VideoConfiguration(1280, 720, 30, 5000000),
+      new VideoConfiguration(800, 600, 120, 5000000))
 
-          if (saveDng()) {
-            saveDngFile(s"$filePathBase.dng", camera.characteristics, result, rawImage, orientation)
-          }
-        }})
-      case Some(bs: camera.BurstSession) =>
-        val time = new Time
-        time.setToNow()
-        val filePathBase = Utils.createPathIfNotExist(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + "/Camera/") + time.format("IMG_%Y%m%d_%H%M%S")
-        val orientation = windowManager.getDefaultDisplay.getRotation
+    val availableVideoConfigurations = Rx { lcamera().toList flatMap { camera => videoConfigurations filter { vc =>
+      val size = new Size(vc.width, vc.height)
+      size <= camera.rawSize && camera.yuvSizes.contains(size) && vc.fps <= camera.rawFps
+    } } }
 
-        val requests = for (n <- 1 to numBursts()) yield {
-          val exp = if (exposureBracketing() == 0) exposure() else {
-            val computeExposureTime = (t: Long) => camera.exposureTimeRange.clamp((t * Math.pow(2, (numBursts() / 2 - n) * (exposureBracketing() / 3.0))).toLong)
-            exposure() match {
-              case AutoExposure => ManualExposure(computeExposureTime(bs.lastExposureTime()), bs.lastIso())
-              case me: ManualExposure => me.copy(exposureDuration = computeExposureTime(me.exposureDuration))
-          } }
+    val userVideoConfiguration = Var(videoConfigurations(0))
+    val videoConfiguration = Rx { availableVideoConfigurations() find { _ == userVideoConfiguration() } orElse availableVideoConfigurations().lift(0) }
 
-          bs.Request(focus(), exp,
-            bs.rawYuv match {
-              case Raw => (result, image) => saveDngFile(s"${filePathBase}_$n.dng", camera.characteristics, result, image, orientation)
-              case Yuv => (result, image) => saveYuvAsJpeg(s"${filePathBase}_$n.jpg", image)
-            })
+    val orientation = Var(Surface.ROTATION_0)
+
+    val orientationEventListener = new OrientationEventListener(this) {
+      override def onOrientationChanged(ignored: Int) = {
+        val newOrientation = windowManager.getDefaultDisplay.getRotation
+        if (orientation() != newOrientation) {
+          orientation() = newOrientation
         }
-
-        bs.burstCapture(requests.toList)
-      case Some(bs: camera.BulbSession) => if (!bs.capturing()) {
-        val time = new Time
-        time.setToNow()
-        val filePathBase = Utils.createPathIfNotExist(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + "/Camera/") + time.format("IMG_%Y%m%d_%H%M%S")
-        val orientation = windowManager.getDefaultDisplay.getRotation
-
-        bs.startCapturing(focus(), exposure(), (result, image, n) => saveDngFile(s"${filePathBase}_$n.dng", camera.characteristics, result, image, orientation))
-      } else bs.stopCapturing()
-      case Some(vs: camera.VideoSession) =>
-        if (!vs.recording()) {
-          vs.startRecording(focus(), exposure())
-        } else {
-          vs.stopRecording()
-          for { surface <- previewSurface() ; vc <- videoConfiguration() } {
-            camera.openVideoSession(surface, vc)
-          }
-        }
-      case _ =>
-    }}}
-
-    observe {
-      Rx {
-        lcamera() match {
-          case Some(camera) => camera.captureSession() flatMap { _.toOption } match {
-            case Some(ps: camera.PhotoSession) => if (ps.capturing()) (Colors.grey300, R.drawable.ic_camera, false) else (Colors.blueA400, R.drawable.ic_camera, true)
-            case Some(bs: camera.BurstSession) => if (bs.capturing()) (Colors.grey300, R.drawable.ic_camera, false) else (Colors.holoBlue, R.drawable.ic_camera, true)
-            case Some(bs: camera.BulbSession)  => if (bs.capturing()) (Colors.holoRed, R.drawable.ic_av_stop, true) else (Colors.holoYellow, R.drawable.ic_bulb, true)
-            case Some(vs: camera.VideoSession) => if (vs.recording()) (Colors.holoRed, R.drawable.ic_av_stop, true) else (Colors.holoGreen, R.drawable.ic_video, true)
-            case _ => (Colors.grey300, R.drawable.ic_camera, false) // FIXME
-          }
-          case _ => (Colors.grey300, R.drawable.ic_camera, false) // FIXME
-        }
-      } foreach {
-        case (color, icon, en) =>
-          enabled = en
-          fadeTo(color, icon)
       }
     }
-  }
 
-  lazy val cpv = new CircularProgressView(ctx) with TraitView[CircularProgressView] with Observable {
-    val basis = this
-    setIndeterminate(true)
-    setThickness(4.dip)
-    setColor(Colors.orange500)
-    startAnimation()
-
-    observe { Rx {
-      lcamera() match {
-        case Some(camera) => camera.captureSession() flatMap { _.toOption } match {
-          case Some(ps: camera.PhotoSession) => ps.capturing()
-          case Some(bs: camera.BurstSession) => bs.capturing()
-          case _ => false
-        }
-        case _ => false
-      }
-    } foreach { c => visibility = if (c) View.VISIBLE else View.INVISIBLE } }
-  }
-
-  lazy val orientationEventListener = new OrientationEventListener(this) {
-    override def onOrientationChanged(ignored: Int) = {
-      val newOrientation = windowManager.getDefaultDisplay.getRotation
-      if (orientation() != newOrientation) {
-        orientation() = newOrientation
-      }
+    onResume {
+      orientation() = windowManager.getDefaultDisplay.getRotation
+      orientationEventListener.enable()
     }
-  }
 
-  override def onCreate(savedInstanceState: Bundle): Unit = {
-    super.onCreate(savedInstanceState)
+    onPause {
+      orientationEventListener.disable()
+    }
 
     contentView = new SRelativeLayout {
+      val textureView = new STextureView {
+        onTouch((v, e) => {
+          if (e.getActionMasked == MotionEvent.ACTION_DOWN) {
+            lcamera() foreach { camera =>
+              camera.captureSession() flatMap { _.value flatMap { _.toOption } } foreach {
+                case session =>
+                  if (autoFocus() || autoExposure()) {
+                    val meteringRectangleSize = 300
+                    val left = camera.activeArraySize.left
+                    val right = camera.activeArraySize.right
+                    val top = camera.activeArraySize.top
+                    val bottom = camera.activeArraySize.bottom
+
+                    val x = e.getX / v.getWidth
+                    val y = e.getY / v.getHeight
+                    val mr = new MeteringRectangle(
+                      0 max (left + (right - left) * y - meteringRectangleSize / 2).round,
+                      0 max (bottom - (bottom - top) * x - meteringRectangleSize / 2).round,
+                      meteringRectangleSize, meteringRectangleSize, 1
+                    )
+
+                    session.triggerMetering(mr, focus(), exposure())
+                  } } }
+            true
+          } else false
+        })
+      }
+
+      val previewSurface = Rx { for { camera <- lcamera() ; texture <- textureView.surfaceTexture() } yield {
+        val textureSize = camera.streamConfigurationMap.getOutputSizes(texture.getClass).filter(sz => sz <= camera.rawSize && sz <= new Size(1600, 1200))(0) // TODO: Obtain the size from camera configuration and screen size.
+        texture.setDefaultBufferSize(textureSize.getWidth, textureSize.getHeight)
+        new Surface(texture)
+      }}
+
+      observe { for { (rotation, cameraOption, _) <- Rx { (orientation(), lcamera(), previewSurface()) } ; camera <- cameraOption } {
+        if (textureView.isAvailable) {
+          textureView.setTransform {
+            val textureSize = camera.streamConfigurationMap.getOutputSizes(textureView.getSurfaceTexture.getClass).filter(sz => sz <= camera.rawSize && sz <= new Size(1600, 1200))(0)
+            val viewRect = new RectF(0, 0, textureView.width, textureView.height)
+            val bufferRect = new RectF(0, 0, textureSize.getHeight, textureSize.getWidth)
+            bufferRect.offset(viewRect.centerX - bufferRect.centerX, viewRect.centerY - bufferRect.centerY)
+            val matrix = new Matrix()
+            matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.CENTER)
+            matrix.postRotate(rotation * 90, viewRect.centerX, viewRect.centerY)
+            matrix
+          }
+        }
+      }}
+
+      observe { for { (previewSurface, session) <- Rx { ( previewSurface(), lcamera() flatMap { _.captureSession() } ) } } {
+        previewSurface foreach { surface => if (session.isEmpty) { lcamera() foreach { _.openPhotoSession(surface) } } }
+      } }
+
+      val captureButton = new Fab(ctx) with TraitImageButton[Fab] {
+        val basis = this
+        def fadeTo(color: Int, drawable: Int): Unit = {
+          imageDrawable = drawable
+          val anim = ObjectAnimator.ofArgb(this, "backgroundColor", background.asInstanceOf[ColorDrawable].getColor, color)
+          anim.addListener(new AnimatorListenerAdapter() {
+            override def onAnimationEnd(animator: Animator): Unit = { backgroundColor = color }
+          })
+          anim.setDuration(150)
+          anim.start()
+        }
+
+        backgroundColor = Colors.grey300
+        scaleType = ScaleType.FIT_CENTER
+        performCapture = Some { () => performClick() }
+        onClick { lcamera() foreach { camera => camera.captureSession() flatMap { _.toOption } match {
+          case Some(ps: camera.PhotoSession) =>
+            val time = new Time
+            time.setToNow()
+            val filePathBase = Utils.createPathIfNotExist(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + "/Camera/") + time.format("IMG_%Y%m%d_%H%M%S")
+            val orientation = windowManager.getDefaultDisplay.getRotation
+
+            ps.capture(focus(), exposure(), { (result, jpegImage, rawImage) => {
+              saveJpegFile(s"$filePathBase.jpg", jpegImage)
+              if (saveDng()) { saveDngFile(s"$filePathBase.dng", camera.characteristics, result, rawImage, orientation) }
+            }})
+          case Some(bs: camera.BurstSession) =>
+            val time = new Time
+            time.setToNow()
+            val filePathBase = Utils.createPathIfNotExist(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + "/Camera/") + time.format("IMG_%Y%m%d_%H%M%S")
+            val orientation = windowManager.getDefaultDisplay.getRotation
+
+            val requests = for (n <- 1 to numBursts()) yield {
+              val exp = if (exposureBracketing() == 0) exposure() else {
+                val computeExposureTime = (t: Long) => camera.exposureTimeRange.clamp((t * Math.pow(2, (numBursts() / 2 - n) * (exposureBracketing() / 3.0))).toLong)
+                exposure() match {
+                  case AutoExposure => ManualExposure(computeExposureTime(bs.lastExposureTime()), bs.lastIso())
+                  case me: ManualExposure => me.copy(exposureDuration = computeExposureTime(me.exposureDuration))
+                } }
+
+              bs.Request(focus(), exp,
+                bs.rawYuv match {
+                  case Raw => (result, image) => saveDngFile(s"${filePathBase}_$n.dng", camera.characteristics, result, image, orientation)
+                  case Yuv => (result, image) => saveYuvAsJpeg(s"${filePathBase}_$n.jpg", image)
+                })
+            }
+
+            bs.burstCapture(requests.toList)
+          case Some(bs: camera.BulbSession) => if (!bs.capturing()) {
+            val time = new Time
+            time.setToNow()
+            val filePathBase = Utils.createPathIfNotExist(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + "/Camera/") + time.format("IMG_%Y%m%d_%H%M%S")
+            val orientation = windowManager.getDefaultDisplay.getRotation
+
+            bs.startCapturing(focus(), exposure(), (result, image, n) => saveDngFile(s"${filePathBase}_$n.dng", camera.characteristics, result, image, orientation))
+          } else bs.stopCapturing()
+          case Some(vs: camera.VideoSession) =>
+            if (!vs.recording()) {
+              vs.startRecording(focus(), exposure())
+            } else {
+              vs.stopRecording()
+              for { surface <- previewSurface() ; vc <- videoConfiguration() } {
+                camera.openVideoSession(surface, vc)
+              }
+            }
+          case _ =>
+        }}}
+
+        observe {
+          Rx {
+            lcamera() match {
+              case Some(camera) => camera.captureSession() flatMap { _.toOption } match {
+                case Some(ps: camera.PhotoSession) => if (ps.capturing()) (Colors.grey300, R.drawable.ic_camera, false) else (Colors.blueA400, R.drawable.ic_camera, true)
+                case Some(bs: camera.BurstSession) => if (bs.capturing()) (Colors.grey300, R.drawable.ic_camera, false) else (Colors.holoBlue, R.drawable.ic_camera, true)
+                case Some(bs: camera.BulbSession)  => if (bs.capturing()) (Colors.holoRed, R.drawable.ic_av_stop, true) else (Colors.holoYellow, R.drawable.ic_bulb, true)
+                case Some(vs: camera.VideoSession) => if (vs.recording()) (Colors.holoRed, R.drawable.ic_av_stop, true) else (Colors.holoGreen, R.drawable.ic_video, true)
+                case _ => (Colors.grey300, R.drawable.ic_camera, false) // FIXME
+              }
+              case _ => (Colors.grey300, R.drawable.ic_camera, false) // FIXME
+            }
+          } foreach {
+            case (color, icon, en) =>
+              enabled = en
+              fadeTo(color, icon)
+          }
+        }
+      }
+
+      val cpv = new CircularProgressView(ctx) with TraitView[CircularProgressView] with Observable {
+        val basis = this
+        setIndeterminate(true)
+        setThickness(4.dip)
+        setColor(Colors.orange500)
+        startAnimation()
+
+        observe { Rx {
+          lcamera() match {
+            case Some(camera) => camera.captureSession() flatMap { _.toOption } match {
+              case Some(ps: camera.PhotoSession) => ps.capturing()
+              case Some(bs: camera.BurstSession) => bs.capturing()
+              case _ => false
+            }
+            case _ => false
+          }
+        } foreach { c => visibility = if (c) View.VISIBLE else View.INVISIBLE } }
+      }
+
+      val showSettingsDialog = () => {
+        new AlertDialogBuilder {
+          setView(new SVerticalLayout {
+            padding(24.dip, 16.dip, 24.dip, 16.dip)
+
+            += (new STextView {
+              text = "Photo Mode"
+              textColor = Colors.grey600
+              textSize = 14.sp
+              gravity = Gravity.CENTER_VERTICAL
+            }.<<(MATCH_PARENT, 32.dip).>>)
+
+            += (new SRelativeLayout {
+              padding(0.dip, 16.dip, 0.dip, 16.dip)
+
+              += (new STextView {
+                text = "Save DNG"
+                textColor = Colors.grey300
+                textSize = 16.sp
+              }.<<.wrap.alignParentLeft.centerVertical.>>)
+
+              += (new SCheckBox {
+                observe { saveDng foreach setChecked }
+                onCheckedChanged { (v: View, checked: Boolean) => saveDng() = checked }
+              }.<<.wrap.alignParentRight.centerVertical.>>)
+            })
+
+            += (new STextView {
+              text = "Burst Mode"
+              textColor = Colors.grey600
+              textSize = 14.sp
+              gravity = Gravity.CENTER_VERTICAL
+            }.<<(MATCH_PARENT, 32.dip).>>)
+
+            += (new SLinearLayout {
+              gravity = Gravity.CENTER_VERTICAL
+              padding(0.dip, 16.dip, 0.dip, 16.dip)
+
+              += (new STextView {
+                text = "No. of Images"
+                textColor = Colors.grey300
+                textSize = 16.sp
+              }.<<.fw.Weight(1.0f).>>)
+
+              += (makeButton(R.drawable.ic_navigation_chevron_left, Rx { numBursts() > minBursts }, { numBursts() = Math.max(numBursts() - 1, minBursts) }).wrap)
+              += (new STextView {
+                observe { numBursts foreach { n => text = n.toString } }
+                gravity = Gravity.CENTER
+              }.wrap)
+              += (makeButton(R.drawable.ic_navigation_chevron_right, Rx { numBursts() < maxBursts }, { numBursts() = Math.min(numBursts() + 1, maxBursts) }).wrap)
+            })
+
+            += (new SLinearLayout {
+              gravity = Gravity.CENTER_VERTICAL
+              padding(0.dip, 16.dip, 0.dip, 16.dip)
+
+              def evToString(ev: Int): String = {
+                if (ev == 0) "Off"
+                else if (ev % 3 == 0) s"${ev / 3} EV"
+                else s"$ev/3 EV"
+              }
+
+              += (new STextView {
+                text = "Exp. Bracketing"
+                textColor = Colors.grey300
+                textSize = 16.sp
+              }.<<.fw.Weight(1.0f).>>)
+
+              += (makeButton(R.drawable.ic_navigation_chevron_left, Rx { exposureBracketing() > 0 }, { exposureBracketing() = Math.max(exposureBracketing() - 1, 0) }).wrap)
+              += (new STextView {
+                observe { exposureBracketing foreach { ev => text = evToString(ev) } }
+                gravity = Gravity.CENTER
+              }.<<(48.sp, WRAP_CONTENT).>>)
+              += (makeButton(R.drawable.ic_navigation_chevron_right, Rx { exposureBracketing() < 6 }, { exposureBracketing() = Math.min(exposureBracketing() + 1, 6) }).wrap)
+            })
+
+            += (new SRelativeLayout {
+              padding(0.dip, 16.dip, 0.dip, 16.dip)
+
+              += (new STextView {
+                text = "Save DNG"
+                textColor = Colors.grey300
+                textSize = 16.sp
+              }.<<.wrap.alignParentLeft.centerVertical.>>)
+
+              += (new SCheckBox {
+                observe { burstCaptureRawYuv foreach {
+                  case Raw => checked = true
+                  case Yuv => checked = false
+                }}
+                onCheckedChanged { (v: View, checked: Boolean) => {
+                  burstCaptureRawYuv() = if (checked) Raw else Yuv
+                  for { camera <- lcamera() ; surface <- previewSurface() } {
+                    if (isBurstSession()) camera.openBurstSession(surface, burstCaptureRawYuv())
+                  }}
+                }
+              }.<<.wrap.alignParentRight.centerVertical.>>)
+            })
+
+            += (new STextView {
+              text = "Video Mode"
+              textColor = Colors.grey600
+              textSize = 14.sp
+              gravity = Gravity.CENTER_VERTICAL
+            }.<<(MATCH_PARENT, 32.dip).>>)
+
+            += (new SVerticalLayout {
+              padding(0.dip, 16.dip, 0.dip, 16.dip)
+
+              += (new STextView {
+                text = "Video Resolution"
+                textColor = Colors.grey300
+                textSize = 16.sp
+              }.wrap)
+
+              += (new STextView {
+                textSize = 12.sp
+                textColor = Colors.grey600
+                observe { videoConfiguration foreach {
+                  case Some(vc) => text = vc.toString
+                  case None => text = "N/A"
+                } }
+              }.wrap)
+
+              onClick {
+                new AlertDialogBuilder("Video Resolution") {
+                  val videoConfigurationAdapter: ArrayAdapter[VideoConfiguration] = new SArrayAdapter(videoConfigurations.toArray) {
+                    override def isEnabled(which: Int): Boolean = availableVideoConfigurations() contains videoConfigurations(which)
+
+                    override def getView(which: Int, convertView: View, parent: ViewGroup): View =
+                      new STextView {
+                        text = videoConfigurations(which).toString
+                        textColor = if (videoConfigurationAdapter.isEnabled(which)) {
+                          if (videoConfiguration() contains videoConfigurations(which)) Colors.orange500 else Colors.grey300
+                        } else {
+                          Colors.grey600
+                        }
+                        textSize = 16.sp
+                      }.padding(16.dip)
+                  }
+
+                  setAdapter(videoConfigurationAdapter, new DialogInterface.OnClickListener {
+                    override def onClick(dialog: DialogInterface, which: Int): Unit = { userVideoConfiguration() = videoConfigurations(which) }
+                  })
+                }.show()
+              }
+            })
+
+            += (new STextView {
+              text = "Help & GitHub"
+              textColor = Colors.grey300
+              textSize = 16.sp
+              gravity = Gravity.CENTER_VERTICAL
+              onClick { openUri("https://www.github.com/pkmx/lcamera") }
+            }.<<(MATCH_PARENT, 32.dip).>>)
+          })
+        }.show()
+      }
+
       def toggleToolbar(v: View, others: List[View]): Unit = {
         for { v <- others if v.enabled } {
           slideDownHide(v)
@@ -1032,7 +1203,7 @@ class MainActivity extends SActivity with Observable {
           gravity = Gravity.CENTER
           backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
           imageDrawable = R.drawable.ic_settings
-          onClick { showSettingsDialog }
+          onClick { showSettingsDialog() }
         }.padding(16.dip).wrap)
       }
 
@@ -1063,59 +1234,41 @@ class MainActivity extends SActivity with Observable {
     }
     prefs.Boolean.saveDng.foreach { saveDng() = _ }
     prefs.Boolean.burstCaptureRawYuv.foreach { b => burstCaptureRawYuv() = if (b) Raw else Yuv }
-  }
 
-  observe { for { cameraOpt <- lcamera ; camera <- cameraOpt } {
-    val capabilities = camera.characteristics.get(REQUEST_AVAILABLE_CAPABILITIES)
-    val requiredCapabilities = List(
-      REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR,
-      REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING,
-      REQUEST_AVAILABLE_CAPABILITIES_RAW)
-
-    if (!(requiredCapabilities forall { capabilities contains _ })) {
-      toast("L Camera is not supported on your device")
-      finish()
+    onStop {
+      prefs.autoFocus = autoFocus()
+      prefs.focusDistance = focusDistance()
+      prefs.autoExposure = autoExposure()
+      prefs.iso = iso()
+      prefs.exposureTime = exposureTime()
+      prefs.numBursts = numBursts()
+      prefs.exposureBracketing = exposureBracketing()
+      prefs.vcWidth = userVideoConfiguration().width
+      prefs.vcHeight = userVideoConfiguration().height
+      prefs.vcFps = userVideoConfiguration().fps
+      prefs.vcBitrate = userVideoConfiguration().bitrate
+      prefs.saveDng = saveDng()
+      prefs.burstCaptureRawYuv = burstCaptureRawYuv() match { case Raw => true ; case Yuv => false }
     }
-  }}
 
-  override def onResume(): Unit = {
-    super.onResume()
+    observe { for { cameraOpt <- lcamera ; camera <- cameraOpt } {
+      val capabilities = camera.characteristics.get(REQUEST_AVAILABLE_CAPABILITIES)
+      val requiredCapabilities = List(
+        REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR,
+        REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING,
+        REQUEST_AVAILABLE_CAPABILITIES_RAW)
 
-    val lcameraManager = new LCameraManager
-    observe { lcameraManager.openLCamera("0") foreach { lcamera() = _ }}
-    orientation() = windowManager.getDefaultDisplay.getRotation
-    orientationEventListener.enable()
-  }
-
-  override def onPause(): Unit = {
-    super.onPause()
-    lcamera() foreach { _.close() }
-    orientationEventListener.disable()
-  }
-
-  override def onStop(): Unit = {
-    super.onStop()
-
-    val prefs = new Preferences(getSharedPreferences("lcamera", Context.MODE_PRIVATE))
-    prefs.autoFocus = autoFocus()
-    prefs.focusDistance = focusDistance()
-    prefs.autoExposure = autoExposure()
-    prefs.iso = iso()
-    prefs.exposureTime = exposureTime()
-    prefs.numBursts = numBursts()
-    prefs.exposureBracketing = exposureBracketing()
-    prefs.vcWidth = userVideoConfiguration().width
-    prefs.vcHeight = userVideoConfiguration().height
-    prefs.vcFps = userVideoConfiguration().fps
-    prefs.vcBitrate = userVideoConfiguration().bitrate
-    prefs.saveDng = saveDng()
-    prefs.burstCaptureRawYuv = burstCaptureRawYuv() match { case Raw => true ; case Yuv => false }
+      if (!(requiredCapabilities forall { capabilities contains _ })) {
+        toast("L Camera is not supported on your device")
+        finish()
+      }
+    }}
   }
 
   override def onKeyDown(keyCode: Int, event: KeyEvent): Boolean = {
     if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-      captureButton.performClick()
-      true
+      performCapture foreach { _() }
+      performCapture.nonEmpty
     } else {
       super.onKeyDown(keyCode, event)
     }
@@ -1127,6 +1280,15 @@ class MainActivity extends SActivity with Observable {
     dngCreator.close()
     mediaScan(filePath, ACTION_NEW_PICTURE)
     debug(s"DNG saved: $filePath")
+  }
+
+  def saveJpegFile(filePath: String, image: Image): Unit = {
+    val jpegBuffer = image.getPlanes()(0).getBuffer
+    val bytes = new Array[Byte](jpegBuffer.capacity)
+    jpegBuffer.get(bytes)
+    new FileOutputStream(filePath).write(bytes)
+    mediaScan(filePath, ACTION_NEW_PICTURE)
+    debug(s"JPEG saved: $filePath")
   }
 
   def saveYuvAsJpeg(filePath: String, image: Image): Unit = {
@@ -1164,163 +1326,5 @@ class MainActivity extends SActivity with Observable {
     val resId = ta.getResourceId(0, 0)
     ta.recycle()
     resId
-  }
-
-  def showSettingsDialog(): Unit = {
-    new AlertDialogBuilder {
-      setView(new SVerticalLayout {
-        padding(24.dip, 16.dip, 24.dip, 16.dip)
-
-        += (new STextView {
-          text = "Photo Mode"
-          textColor = Colors.grey600
-          textSize = 14.sp
-          gravity = Gravity.CENTER_VERTICAL
-        }.<<(MATCH_PARENT, 32.dip).>>)
-
-        += (new SRelativeLayout {
-          padding(0.dip, 16.dip, 0.dip, 16.dip)
-
-          += (new STextView {
-            text = "Save DNG"
-            textColor = Colors.grey300
-            textSize = 16.sp
-          }.<<.wrap.alignParentLeft.centerVertical.>>)
-
-          += (new SCheckBox {
-            observe { saveDng foreach setChecked }
-            onCheckedChanged { (v: View, checked: Boolean) => saveDng() = checked }
-          }.<<.wrap.alignParentRight.centerVertical.>>)
-        })
-
-        += (new STextView {
-          text = "Burst Mode"
-          textColor = Colors.grey600
-          textSize = 14.sp
-          gravity = Gravity.CENTER_VERTICAL
-        }.<<(MATCH_PARENT, 32.dip).>>)
-
-        += (new SLinearLayout {
-          gravity = Gravity.CENTER_VERTICAL
-          padding(0.dip, 16.dip, 0.dip, 16.dip)
-
-          += (new STextView {
-            text = "No. of Images"
-            textColor = Colors.grey300
-            textSize = 16.sp
-          }.<<.fw.Weight(1.0f).>>)
-
-          += (makeButton(R.drawable.ic_navigation_chevron_left, Rx { numBursts() > minBursts }, { numBursts() = Math.max(numBursts() - 1, minBursts) }).wrap)
-          += (new STextView {
-            observe { numBursts foreach { n => text = n.toString } }
-            gravity = Gravity.CENTER
-          }.wrap)
-          += (makeButton(R.drawable.ic_navigation_chevron_right, Rx { numBursts() < maxBursts }, { numBursts() = Math.min(numBursts() + 1, maxBursts) }).wrap)
-        })
-
-        += (new SLinearLayout {
-          gravity = Gravity.CENTER_VERTICAL
-          padding(0.dip, 16.dip, 0.dip, 16.dip)
-
-          def evToString(ev: Int): String = {
-            if (ev == 0) "Off"
-            else if (ev % 3 == 0) s"${ev / 3} EV"
-            else s"$ev/3 EV"
-          }
-
-          += (new STextView {
-            text = "Exp. Bracketing"
-            textColor = Colors.grey300
-            textSize = 16.sp
-          }.<<.fw.Weight(1.0f).>>)
-
-          += (makeButton(R.drawable.ic_navigation_chevron_left, Rx { exposureBracketing() > 0 }, { exposureBracketing() = Math.max(exposureBracketing() - 1, 0) }).wrap)
-          += (new STextView {
-            observe { exposureBracketing foreach { ev => text = evToString(ev) } }
-            gravity = Gravity.CENTER
-          }.<<(48.sp, WRAP_CONTENT).>>)
-          += (makeButton(R.drawable.ic_navigation_chevron_right, Rx { exposureBracketing() < 6 }, { exposureBracketing() = Math.min(exposureBracketing() + 1, 6) }).wrap)
-        })
-
-        += (new SRelativeLayout {
-          padding(0.dip, 16.dip, 0.dip, 16.dip)
-
-          += (new STextView {
-            text = "Save DNG"
-            textColor = Colors.grey300
-            textSize = 16.sp
-          }.<<.wrap.alignParentLeft.centerVertical.>>)
-
-          += (new SCheckBox {
-            observe { burstCaptureRawYuv foreach {
-              case Raw => checked = true
-              case Yuv => checked = false
-            }}
-            onCheckedChanged { (v: View, checked: Boolean) => {
-              burstCaptureRawYuv() = if (checked) Raw else Yuv
-              for { camera <- lcamera() ; surface <- previewSurface() } {
-                if (isBurstSession()) camera.openBurstSession(surface, burstCaptureRawYuv())
-              }}
-            }
-          }.<<.wrap.alignParentRight.centerVertical.>>)
-        })
-
-        += (new STextView {
-          text = "Video Mode"
-          textColor = Colors.grey600
-          textSize = 14.sp
-          gravity = Gravity.CENTER_VERTICAL
-        }.<<(MATCH_PARENT, 32.dip).>>)
-
-        += (new SVerticalLayout {
-          padding(0.dip, 16.dip, 0.dip, 16.dip)
-
-          += (new STextView {
-            text = "Video Resolution"
-            textColor = Colors.grey300
-            textSize = 16.sp
-          }.wrap)
-
-          += (new STextView {
-            textSize = 12.sp
-            textColor = Colors.grey600
-            observe { videoConfiguration foreach {
-              case Some(vc) => text = vc.toString
-              case None => text = "N/A"
-            } }
-          }.wrap)
-
-          onClick {
-            new AlertDialogBuilder("Video Resolution") {
-              val videoConfigurationAdapter: ArrayAdapter[VideoConfiguration] = new SArrayAdapter(videoConfigurations.toArray) {
-                override def isEnabled(which: Int): Boolean = availableVideoConfigurations() contains videoConfigurations(which)
-
-                override def getView(which: Int, convertView: View, parent: ViewGroup): View =
-                  new STextView {
-                    text = videoConfigurations(which).toString
-                    textColor = videoConfigurationAdapter.isEnabled(which) match {
-                      case true => if (videoConfiguration() contains videoConfigurations(which)) Colors.orange500 else Colors.grey300
-                      case false => Colors.grey600
-                    }
-                    textSize = 16.sp
-                  }.padding(16.dip)
-              }
-
-              setAdapter(videoConfigurationAdapter, new DialogInterface.OnClickListener {
-                override def onClick(dialog: DialogInterface, which: Int): Unit = { userVideoConfiguration() = videoConfigurations(which) }
-              })
-            }.show()
-          }
-        })
-
-        += (new STextView {
-          text = "Help & GitHub"
-          textColor = Colors.grey300
-          textSize = 16.sp
-          gravity = Gravity.CENTER_VERTICAL
-          onClick { openUri("https://www.github.com/pkmx/lcamera") }
-        }.<<(MATCH_PARENT, 32.dip).>>)
-      })
-    }.show()
   }
 }
