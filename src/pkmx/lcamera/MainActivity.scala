@@ -672,7 +672,7 @@ class MainActivity extends SActivity with Observable {
   val cameraId = Var("0")
   val lcamera = NoneVar[LCamera]
   lazy val previewSurface = Rx { for { camera <- lcamera() ; texture <- textureView.surfaceTexture() } yield {
-    val textureSize = camera.streamConfigurationMap.getOutputSizes(texture.getClass).filter(sz => sz <= camera.rawSize && sz <= new Size(1920, 1080))(0)
+    val textureSize = camera.streamConfigurationMap.getOutputSizes(texture.getClass).filter(sz => sz <= camera.rawSize && sz <= new Size(1600, 1200))(0) // TODO: Obtain the size from camera configuration and screen size.
     texture.setDefaultBufferSize(textureSize.getWidth, textureSize.getHeight)
     new Surface(texture)
   }}
@@ -681,14 +681,12 @@ class MainActivity extends SActivity with Observable {
   observe { for { (rotation, cameraOption, _) <- Rx { (orientation(), lcamera(), previewSurface()) } ; camera <- cameraOption } {
     if (textureView.isAvailable) {
       textureView.setTransform {
-        val textureSize = camera.streamConfigurationMap.getOutputSizes(textureView.getSurfaceTexture.getClass).filter(sz => sz <= camera.rawSize && sz <= new Size(1920, 1080))(0)
+        val textureSize = camera.streamConfigurationMap.getOutputSizes(textureView.getSurfaceTexture.getClass).filter(sz => sz <= camera.rawSize && sz <= new Size(1600, 1200))(0)
         val viewRect = new RectF(0, 0, textureView.width, textureView.height)
         val bufferRect = new RectF(0, 0, textureSize.getHeight, textureSize.getWidth)
         bufferRect.offset(viewRect.centerX - bufferRect.centerX, viewRect.centerY - bufferRect.centerY)
         val matrix = new Matrix()
-        matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.FILL)
-        val scale = Math.max(textureView.width.toFloat / textureSize.getWidth, textureView.height.toFloat / textureSize.getHeight)
-        matrix.postScale(scale, scale, viewRect.centerX, viewRect.centerY)
+        matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.CENTER)
         matrix.postRotate(rotation * 90, viewRect.centerX, viewRect.centerY)
         matrix
       }
