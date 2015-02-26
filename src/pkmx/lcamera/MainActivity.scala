@@ -700,14 +700,8 @@ class MainActivity extends SActivity with Observable {
       session foreach { _.setupPreview(focus, exposure) }
     } }
 
-    onResume {
-      val lcameraManager = new LCameraManager
-      observe { lcameraManager.openLCamera("0") foreach { lcamera() = _ }}
-    }
-
-    onPause {
-      lcamera() foreach { _.close() }
-    }
+    onResume { observe { (new LCameraManager).openLCamera("0") foreach { lcamera() = _ }} }
+    onPause  { lcamera() foreach { _.close() } }
 
     val videoConfigurations = List(
       new VideoConfiguration(3840, 2160, 30, 65000000),
@@ -729,7 +723,7 @@ class MainActivity extends SActivity with Observable {
     val userVideoConfiguration = Var(videoConfigurations(0))
     val videoConfiguration = Rx { availableVideoConfigurations() find { _ == userVideoConfiguration() } orElse availableVideoConfigurations().lift(0) }
 
-    val orientation = Var(Surface.ROTATION_0)
+    val orientation = Var(windowManager.getDefaultDisplay.getRotation)
 
     val orientationEventListener = new OrientationEventListener(this) {
       override def onOrientationChanged(ignored: Int) = {
@@ -740,14 +734,8 @@ class MainActivity extends SActivity with Observable {
       }
     }
 
-    onResume {
-      orientation() = windowManager.getDefaultDisplay.getRotation
-      orientationEventListener.enable()
-    }
-
-    onPause {
-      orientationEventListener.disable()
-    }
+    onResume { orientationEventListener.enable() }
+    onPause  { orientationEventListener.disable() }
 
     contentView = new SRelativeLayout {
       val textureView = new STextureView {
