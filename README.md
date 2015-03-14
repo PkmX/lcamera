@@ -6,14 +6,6 @@
 
 *Please note that this app is intended to test and study new features of the camera API, it is not for general uses as it lacks many basic camera features (location tagging, white balance, photo review, flash control, etc).*
 
-[See what you can achieve on the Nexus 5 with the new API](http://imgur.com/a/qQkkR).
-
-[See how the new API can greatly enhance low-light photography with the right settings and tools](http://imgur.com/a/ftvBH).
-
-Check out some 60-fps video recording samples: [1](https://www.youtube.com/watch?v=T6D1Qu7Q23o) [2](https://www.youtube.com/watch?v=kTL3FfGV2k4).
-
-Slow motion video recorded with a Nexus 5: https://www.youtube.com/watch?v=iKAvN-x53jM
-
 ## Features
 
 * True manual focus (adjustable focus distance)
@@ -27,6 +19,15 @@ Slow motion video recorded with a Nexus 5: https://www.youtube.com/watch?v=iKAvN
 * Experimental 60-fps video recording at 1080p on Nexus 5
 * Experimental 120-fps video recording at 800x600 on Nexus 5
 * Material design
+
+### Tour
+
+* [See what you can achieve on the Nexus 5 with the new API](http://imgur.com/a/qQkkR).
+* [See how the new API can greatly enhance low-light photography with the right settings and tools](http://imgur.com/a/ftvBH).
+* [Astrophotograhpy with Nexus 5](http://imgur.com/a/BXMGu)
+* Check out some 60-fps video recording samples: [1](https://www.youtube.com/watch?v=T6D1Qu7Q23o) [2](https://www.youtube.com/watch?v=kTL3FfGV2k4)
+* [Slow motion video recorded with a Nexus 5](https://www.youtube.com/watch?v=iKAvN-x53jM)
+* [Feature comparison with other camera apps by xda-developers](http://www.xda-developers.com/top-4-camera-apps-for-lollipops-new-api/)
 
 ## Installation
 
@@ -45,7 +46,7 @@ Just use it like any camera! Tap other four button at the bottom to bring up set
     * Shutter Speed: Control shutter speed of the sensor. (Setting a slow shutter speed will affect preview frame rate)
     * ISO: Control the sensitivity of the sensor.
 * Mode
-    * Photo mode: Take a single capture at the highest quality possible.
+    * Photo mode: Capture a single image at the highest quality possible.
     * Burst mode: Capture up to 20 image at maximum resolution at 30 fps with optional exposure bracketing.
     * Bulb mode: Keep capturing DNG images until manually stopped. Note that as the Nexus 5's internal memory writing speed cannot keep up with the rate the camera pushes out new images even at the slowest shutter speed, the camera waits until the previous image is saved before starting a new capture to avoid filling the buffers.
     * Video mode: Videos are encoded with H.264/AVC for video and 44.1khz 320kbps AAC-LC for audio in MP4 container. Focus distance and exposure settings are adjustable during recording.
