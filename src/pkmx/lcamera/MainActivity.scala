@@ -665,6 +665,7 @@ object Colors {
 
 class MainActivity extends SActivity with Observable {
   import LCamera._
+
   override implicit val loggerTag = LoggerTag("lcamera")
 
   var performCapture: Option[(() => Unit)] = None
@@ -681,7 +682,10 @@ class MainActivity extends SActivity with Observable {
     val numBursts = Var(3)
     val burstCaptureRawYuv = Var[RawOrYuv](Yuv)
     val exposureBracketing = Var(0)
+    val isPhotoSession = Rx { lcamera() exists { camera => camera.captureSession() flatMap { _.toOption } exists { _.isInstanceOf[camera.PhotoSession] } } }
     val isBurstSession = Rx { lcamera() exists { camera => camera.captureSession() flatMap { _.toOption } exists { _.isInstanceOf[camera.BurstSession] } } }
+    val isBulbSession  = Rx { lcamera() exists { camera => camera.captureSession() flatMap { _.toOption } exists { _.isInstanceOf[camera.BulbSession ] } } }
+    val isVideoSession = Rx { lcamera() exists { camera => camera.captureSession() flatMap { _.toOption } exists { _.isInstanceOf[camera.VideoSession] } } }
 
     val autoFocus = Var(true)
     val focusDistance = Var(0f)
@@ -942,12 +946,12 @@ class MainActivity extends SActivity with Observable {
                 textSize = 16.sp
               }.<<.fw.Weight(1.0f).>>)
 
-              += (makeButton(R.drawable.ic_navigation_chevron_left, Rx { numBursts() > minBursts }, { numBursts() = Math.max(numBursts() - 1, minBursts) }).wrap)
+              += (makePrevButton(Rx { numBursts() > minBursts }, { numBursts() = Math.max(numBursts() - 1, minBursts) }).wrap)
               += (new STextView {
                 observe { numBursts foreach { n => text = n.toString } }
                 gravity = Gravity.CENTER
               }.wrap)
-              += (makeButton(R.drawable.ic_navigation_chevron_right, Rx { numBursts() < maxBursts }, { numBursts() = Math.min(numBursts() + 1, maxBursts) }).wrap)
+              += (makeNextButton(Rx { numBursts() < maxBursts }, { numBursts() = Math.min(numBursts() + 1, maxBursts) }).wrap)
             })
 
             += (new SLinearLayout {
@@ -966,12 +970,12 @@ class MainActivity extends SActivity with Observable {
                 textSize = 16.sp
               }.<<.fw.Weight(1.0f).>>)
 
-              += (makeButton(R.drawable.ic_navigation_chevron_left, Rx { exposureBracketing() > 0 }, { exposureBracketing() = Math.max(exposureBracketing() - 1, 0) }).wrap)
+              += (makePrevButton(Rx { exposureBracketing() > 0 }, { exposureBracketing() = Math.max(exposureBracketing() - 1, 0) }).wrap)
               += (new STextView {
                 observe { exposureBracketing foreach { ev => text = evToString(ev) } }
                 gravity = Gravity.CENTER
               }.<<(48.sp, WRAP_CONTENT).>>)
-              += (makeButton(R.drawable.ic_navigation_chevron_right, Rx { exposureBracketing() < 6 }, { exposureBracketing() = Math.min(exposureBracketing() + 1, 6) }).wrap)
+              += (makeNextButton(Rx { exposureBracketing() < 6 }, { exposureBracketing() = Math.min(exposureBracketing() + 1, 6) }).wrap)
             })
 
             += (new SRelativeLayout {
@@ -1057,20 +1061,11 @@ class MainActivity extends SActivity with Observable {
         }.show()
       }
 
-      def toggleToolbar(v: View, others: List[View]): Unit = {
-        for { v <- others if v.enabled } {
-          slideDownHide(v)
-        }
-
-        if (v.enabled) { slideDownHide(v) } else { slideUpShow(v) }
-      }
-
-      class Toolbar extends SLinearLayout {
+      class Toolbar extends SLinearLayout with Observable {
         clickable = true
         backgroundColor = Colors.grey800
         gravity = Gravity.CENTER
         visibility = View.INVISIBLE
-        enabled = false
       }
 
       val afView = new Toolbar {
@@ -1100,7 +1095,7 @@ class MainActivity extends SActivity with Observable {
         }.padding(8.dip, 16.dip, 8.dip, 16.dip).wrap)
 
         val prevExposureTime = Rx { (validExposureTimes() filter { _ > exposureTime() }).lastOption }
-        += (makeButton(R.drawable.ic_navigation_chevron_left, Rx { !autoExposure() && prevExposureTime().nonEmpty }, { prevExposureTime() foreach { exposureTime() = _ } }))
+        += (makePrevButton(Rx { !autoExposure() && prevExposureTime().nonEmpty }, { prevExposureTime() foreach { exposureTime() = _ } }))
         += (new STextView {
           typeface = condensedTypeface
           val lastExposureTime = Rx { lcamera() flatMap { _.captureSession() flatMap { _.toOption } } map { _.lastExposureTime() } getOrElse 1000000000l }
@@ -1109,10 +1104,10 @@ class MainActivity extends SActivity with Observable {
           onClick { autoExposure() = !autoExposure() }
         }.padding(0.dip, 16.dip, 0.dip, 16.dip).wrap)
         val nextExposureTime = Rx { validExposureTimes() find { _ < exposureTime() } }
-        += (makeButton(R.drawable.ic_navigation_chevron_right, Rx { !autoExposure() && nextExposureTime().nonEmpty }, { nextExposureTime() foreach { exposureTime() = _ } }))
+        += (makeNextButton(Rx { !autoExposure() && nextExposureTime().nonEmpty }, { nextExposureTime() foreach { exposureTime() = _ } }))
 
         val prevIso = Rx { (validIsos() filter { _ < iso() }).lastOption }
-        += (makeButton(R.drawable.ic_navigation_chevron_left, Rx { !autoExposure() && prevIso().nonEmpty }, { prevIso() foreach { iso() = _ } }))
+        += (makePrevButton(Rx { !autoExposure() && prevIso().nonEmpty }, { prevIso() foreach { iso() = _ } }))
         += (new STextView {
           typeface = condensedTypeface
           val lastIso = Rx { lcamera() flatMap { _.captureSession() flatMap { _.toOption } } map { _.lastIso() } getOrElse 100 }
@@ -1121,53 +1116,52 @@ class MainActivity extends SActivity with Observable {
           onClick { autoExposure() = !autoExposure() }
         }.padding(0.dip, 16.dip, 0.dip, 16.dip).wrap)
         val nextIso = Rx { validIsos() find { _ > iso() } }
-        += (makeButton(R.drawable.ic_navigation_chevron_right, Rx { !autoExposure() && nextIso().nonEmpty }, { nextIso() foreach { iso() = _ } }))
+        += (makeNextButton(Rx { !autoExposure() && nextIso().nonEmpty }, { nextIso() foreach { iso() = _ } }))
       }
 
-      val modeView = new Toolbar {
-        class ModeButton(drawableRes: Int, f: (LCamera, Surface) => Unit) extends SImageButton with Observable {
-          backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
+      val modeView = new Toolbar with Observable {
+        val rxCanSwitchMode = Rx { lcamera() match {
+          case Some(camera) => camera.captureSession() flatMap { _.toOption } match {
+            case Some(ps: camera.PhotoSession) => !ps.capturing()
+            case Some(bs: camera.BurstSession) => !bs.capturing()
+            case Some(bs: camera.BulbSession) => !bs.capturing()
+            case Some(vs: camera.VideoSession) => !vs.recording()
+            case None => true
+          }
+          case None => false
+        } }
 
-          val rxEnable = Rx { lcamera() match {
-            case Some(camera) => camera.captureSession() flatMap { _.toOption } match {
-              case Some(ps: camera.PhotoSession) => !ps.capturing()
-              case Some(bs: camera.BurstSession) => !bs.capturing()
-              case Some(bs: camera.BulbSession) => !bs.capturing()
-              case Some(vs: camera.VideoSession) => !vs.recording()
-              case None => true
-            }
-            case None => false
-          } }
+        def makeModeButton(drawableRes: Int, isCurrentMode: Rx[Boolean], f: (LCamera, Surface) => Unit): SImageButton =
+          makeImageButton(drawableRes, Rx { rxCanSwitchMode() && !isCurrentMode() }, Rx { if (isCurrentMode()) Some(Colors.orange500) else if (!rxCanSwitchMode()) Some(Colors.grey600) else None}, {
+            for { camera <- lcamera() ; previewSurface <- previewSurface() } { f(camera, previewSurface) }
+          }).padding(8.dip).<<.marginLeft(8.dip).marginRight(8.dip).wrap.>>
 
-          observe { rxEnable foreach { enabled = _ } }
-          observe { rxEnable foreach { en => imageDrawable = if (en) drawableRes else disabledTint(drawableRes) } }
-          onClick { for { camera <- lcamera() ; previewSurface <- previewSurface() } { f(camera, previewSurface) } }
-
-          <<.marginLeft(8.dip).marginRight(8.dip).wrap.>>
-        }
-
-        += (new ModeButton(R.drawable.ic_photo_mode, { (camera, surface) => camera.openPhotoSession(surface) }))
-        += (new ModeButton(R.drawable.ic_burst_mode, { (camera, surface) => camera.openBurstSession(surface, burstCaptureRawYuv(), maxBursts) }))
-        += (new ModeButton(R.drawable.ic_bulb_mode , { (camera, surface) => camera.openBulbSession(surface) }))
-        += (new ModeButton(R.drawable.ic_video_mode, { (camera, surface) => videoConfiguration() foreach { vc => camera.openVideoSession(surface, vc) } }))
+        += (makeModeButton(R.drawable.ic_photo_mode, isPhotoSession, { (camera, surface) => camera.openPhotoSession(surface) }))
+        += (makeModeButton(R.drawable.ic_burst_mode, isBurstSession, { (camera, surface) => camera.openBurstSession(surface, burstCaptureRawYuv(), maxBursts) }))
+        += (makeModeButton(R.drawable.ic_bulb_mode , isBulbSession , { (camera, surface) => camera.openBulbSession(surface) }))
+        += (makeModeButton(R.drawable.ic_video_mode, isVideoSession, { (camera, surface) => videoConfiguration() foreach { vc => camera.openVideoSession(surface, vc) } }))
       }
 
       val bottomBar = new SLinearLayout {
         backgroundColor = Colors.grey800
         gravity = Gravity.CENTER
 
-        += (new SImageView {
-          gravity = Gravity.CENTER
-          backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
-          imageDrawable = R.drawable.ic_focus
-          onClick { toggleToolbar(afView, List(aeView, modeView)) }
-        }.padding(16.dip).wrap)
-        += (new SImageView {
-          gravity = Gravity.CENTER
-          backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
-          imageDrawable = R.drawable.ic_exposure
-          onClick { toggleToolbar(aeView, List(afView, modeView)) }
-        }.padding(16.dip).wrap)
+        val currentToolbar = NoneVar[View]
+        val toolbars = List(afView, aeView, modeView)
+        onBackPressedBody = () => if (currentToolbar().isEmpty) false else { currentToolbar() = None ; true }
+
+        observe { currentToolbar foreach {
+          case Some(cv) =>
+            for { v <- toolbars if v.enabled && v != cv } { slideDownHide(v) }
+            slideUpShow(cv)
+          case None => for { v <- toolbars if v.enabled } { slideDownHide(v) }
+        }}
+
+        def toggleToolbar(v: View): Unit = { currentToolbar() = if (currentToolbar() == Some(v)) None else Some(v) }
+
+        def makeButton(drawableRes: Int, view: View) = makeImageButton(drawableRes, Rx { true }, Rx { if (currentToolbar() == Some(view)) Some(Colors.orange500) else None }, toggleToolbar(view)).padding(16.dip).wrap
+        += (makeButton(R.drawable.ic_focus, afView))
+        += (makeButton(R.drawable.ic_exposure, aeView))
         += (new SRelativeLayout {
           += (captureButton.<<(56.dip, 56.dip).centerInParent.>>)
           += (cpv.<<(60.dip, 60.dip).centerInParent.>>)
@@ -1185,7 +1179,7 @@ class MainActivity extends SActivity with Observable {
             }
             case None => R.drawable.ic_photo_mode
           } } foreach { imageDrawable = _ } }
-          onClick { toggleToolbar(modeView, List(afView, aeView)) }
+          onClick { toggleToolbar(modeView) }
         }.padding(16.dip).wrap)
         += (new SImageView {
           gravity = Gravity.CENTER
@@ -1253,6 +1247,14 @@ class MainActivity extends SActivity with Observable {
     }}
   }
 
+  var onBackPressedBody = () => false
+
+  override def onBackPressed(): Unit = {
+    if (!onBackPressedBody()) {
+      super.onBackPressed()
+    }
+  }
+
   override def onKeyDown(keyCode: Int, event: KeyEvent): Boolean = {
     if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
       performCapture foreach { _() }
@@ -1293,19 +1295,19 @@ class MainActivity extends SActivity with Observable {
     debug(s"JPEG saved: $filePath")
   }
 
-  def makeButton(drawableRes: Int, rxEnable: Rx[Boolean], f: => Unit): SImageButton = new SImageButton {
+  def makeImageButton(drawableRes: Int, rxEnable: Rx[Boolean], rxColor: Rx[Option[Int]], f: => Unit): SImageButton = new SImageButton {
     backgroundResource = resolveAttr(android.R.attr.selectableItemBackground)
-    padding(4.dip)
-    observe { rxEnable foreach { en =>
-      enabled = en
-      imageDrawable = if (en) drawableRes else disabledTint(drawableRes)
-    } }
+    observe { rxEnable foreach { enabled = _ } }
+    observe { rxColor foreach { oc => imageDrawable = oc map { colorTintDrawable(drawableRes, _) } getOrElse drawableRes.r2Drawable } }
     onClick(f)
   }
 
-  def disabledTint(drawable: Int): Drawable = {
+  def makePrevButton(rxEnable: Rx[Boolean], f: => Unit): SImageButton = makeImageButton(R.drawable.ic_navigation_chevron_left,  rxEnable, Rx { if (rxEnable()) None else Some(Colors.grey600)}, f).padding(4.dip)
+  def makeNextButton(rxEnable: Rx[Boolean], f: => Unit): SImageButton = makeImageButton(R.drawable.ic_navigation_chevron_right, rxEnable, Rx { if (rxEnable()) None else Some(Colors.grey600)}, f).padding(4.dip)
+
+  def colorTintDrawable(drawable: Int, color: Int): Drawable = {
     val d = drawable.mutate()
-    d.setColorFilter(Colors.grey600, PorterDuff.Mode.SRC_IN)
+    d.setColorFilter(color, PorterDuff.Mode.SRC_IN)
     d
   }
 
