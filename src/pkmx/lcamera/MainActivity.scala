@@ -406,8 +406,8 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
     createSession(List(previewSurface, imageReader.getSurface), (session) => new BulbSession(session, previewSurface, imageReader))
   }
 
-  def openVideoSession(previewSurface: Surface, vc: VideoConfiguration): Unit = {
-    val mr = new MyMediaRecorder(vc, windowManager.getDefaultDisplay.getRotation)
+  def openVideoSession(previewSurface: Surface, vc: VideoConfiguration, orientation: Int): Unit = {
+    val mr = new MyMediaRecorder(vc, orientation)
     createSession(List(previewSurface, mr.getSurface), (session) => new VideoSession(session, previewSurface, mr))
   }
 
@@ -427,7 +427,7 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
       override def onImageAvailable(reader: ImageReader): Unit = { rawImageChannel.write(reader.acquireNextImage()) }
     }, null)
 
-    def capture(focus: Focus, exposure: Exposure, successHandler: (TotalCaptureResult, Image, Image) => Unit, orientation: Int = windowManager.getDefaultDisplay.getRotation): Unit = {
+    def capture(focus: Focus, exposure: Exposure, orientation: Int, successHandler: (TotalCaptureResult, Image, Image) => Unit): Unit = {
       if (!capturing()) {
         debug(s"Starting capture using $camera")
         capturingVar() = true
@@ -483,7 +483,7 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
     }, null)
 
     case class Request(focus: Focus, exposure: Exposure, handler: (TotalCaptureResult, Image) => Unit)
-    def burstCapture(requests: List[Request], orientation: Int = windowManager.getDefaultDisplay.getRotation): Unit = {
+    def burstCapture(requests: List[Request], orientation: Int): Unit = {
       if (!capturing()) {
         debug(s"Starting burst capture using $camera")
         capturingVar() = true
@@ -546,7 +546,7 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
       override def onImageAvailable(reader: ImageReader): Unit = { imageChannel.write(reader.acquireNextImage()) }
     }, null)
 
-    def startCapturing(focus: Focus, exposure: Exposure, handler: (TotalCaptureResult, Image, Int) => Unit, orientation: Int = windowManager.getDefaultDisplay.getRotation): Unit = {
+    def startCapturing(focus: Focus, exposure: Exposure, orientation: Int, handler: (TotalCaptureResult, Image, Int) => Unit): Unit = {
       if (!capturing()) {
         debug(s"Starting bulb capture using $camera")
         capturingVar() = true
@@ -727,13 +727,20 @@ class MainActivity extends SActivity with Observable {
     val userVideoConfiguration = Var(videoConfigurations(0))
     val videoConfiguration = Rx { availableVideoConfigurations() find { _ == userVideoConfiguration() } orElse availableVideoConfigurations().lift(0) }
 
-    val orientation = Var(windowManager.getDefaultDisplay.getRotation)
+    val orientationVar = Var(windowManager.getDefaultDisplay.getRotation)
 
     val orientationEventListener = new OrientationEventListener(this) {
-      override def onOrientationChanged(ignored: Int) = {
-        val newOrientation = windowManager.getDefaultDisplay.getRotation
-        if (orientation() != newOrientation) {
-          orientation() = newOrientation
+      override def onOrientationChanged(deg: Int) = {
+        val newOrientation =
+          if (deg >= 0 && deg < 45 || deg >= 315 && deg < 360) Surface.ROTATION_0
+          else if (deg >= 45 && deg < 135) Surface.ROTATION_270
+          else if (deg >= 135 && deg < 225) Surface.ROTATION_180
+          else if (deg >= 225 && deg < 315) Surface.ROTATION_90
+          else Surface.ROTATION_0
+
+        debug(newOrientation.toString)
+        if (orientationVar() != newOrientation) {
+          orientationVar() = newOrientation // FIXME: Re-create video session
         }
       }
     }
@@ -776,7 +783,7 @@ class MainActivity extends SActivity with Observable {
         new Surface(texture)
       }}
 
-      observe { for { (rotation, cameraOption, _) <- Rx { (orientation(), lcamera(), previewSurface()) } ; camera <- cameraOption } {
+      observe { for { (cameraOption, _) <- Rx { (lcamera(), previewSurface()) } ; camera <- cameraOption } {
         if (textureView.isAvailable) {
           textureView.setTransform {
             val textureSize = camera.streamConfigurationMap.getOutputSizes(textureView.getSurfaceTexture.getClass).filter(sz => sz <= camera.rawSize && sz <= new Size(1600, 1200))(0)
@@ -785,7 +792,7 @@ class MainActivity extends SActivity with Observable {
             bufferRect.offset(viewRect.centerX - bufferRect.centerX, viewRect.centerY - bufferRect.centerY)
             val matrix = new Matrix()
             matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.CENTER)
-            matrix.postRotate(rotation * 90, viewRect.centerX, viewRect.centerY)
+            // matrix.postRotate(rotation * 90, viewRect.centerX, viewRect.centerY) // TODO: Rotate by the difference of screen orientation and camera orientation
             matrix
           }
         }
@@ -815,9 +822,9 @@ class MainActivity extends SActivity with Observable {
             val time = new Time
             time.setToNow()
             val filePathBase = Utils.createPathIfNotExist(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + "/Camera/") + time.format("IMG_%Y%m%d_%H%M%S")
-            val orientation = windowManager.getDefaultDisplay.getRotation
+            val orientation = orientationVar()
 
-            ps.capture(focus(), exposure(), { (result, jpegImage, rawImage) => {
+            ps.capture(focus(), exposure(), orientation, { (result, jpegImage, rawImage) => {
               saveJpegFile(s"$filePathBase.jpg", jpegImage)
               if (saveDng()) { saveDngFile(s"$filePathBase.dng", camera.characteristics, result, rawImage, orientation) }
             }})
@@ -825,7 +832,7 @@ class MainActivity extends SActivity with Observable {
             val time = new Time
             time.setToNow()
             val filePathBase = Utils.createPathIfNotExist(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + "/Camera/") + time.format("IMG_%Y%m%d_%H%M%S")
-            val orientation = windowManager.getDefaultDisplay.getRotation
+            val orientation = orientationVar()
 
             val requests = for (n <- 1 to numBursts()) yield {
               val exp = if (exposureBracketing() == 0) exposure() else {
@@ -842,14 +849,14 @@ class MainActivity extends SActivity with Observable {
                 })
             }
 
-            bs.burstCapture(requests.toList)
+            bs.burstCapture(requests.toList, orientation)
           case Some(bs: camera.BulbSession) => if (!bs.capturing()) {
             val time = new Time
             time.setToNow()
             val filePathBase = Utils.createPathIfNotExist(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + "/Camera/") + time.format("IMG_%Y%m%d_%H%M%S")
-            val orientation = windowManager.getDefaultDisplay.getRotation
+            val orientation = orientationVar()
 
-            bs.startCapturing(focus(), exposure(), (result, image, n) => saveDngFile(s"${filePathBase}_$n.dng", camera.characteristics, result, image, orientation))
+            bs.startCapturing(focus(), exposure(), orientation, (result, image, n) => saveDngFile(s"${filePathBase}_$n.dng", camera.characteristics, result, image, orientation))
           } else bs.stopCapturing()
           case Some(vs: camera.VideoSession) =>
             if (!vs.recording()) {
@@ -857,7 +864,7 @@ class MainActivity extends SActivity with Observable {
             } else {
               vs.stopRecording()
               for { surface <- previewSurface() ; vc <- videoConfiguration() } {
-                camera.openVideoSession(surface, vc)
+                camera.openVideoSession(surface, vc, orientationVar())
               }
             }
           case _ =>
@@ -1139,7 +1146,7 @@ class MainActivity extends SActivity with Observable {
         += (makeModeButton(R.drawable.ic_photo_mode, isPhotoSession, { (camera, surface) => camera.openPhotoSession(surface) }))
         += (makeModeButton(R.drawable.ic_burst_mode, isBurstSession, { (camera, surface) => camera.openBurstSession(surface, burstCaptureRawYuv(), maxBursts) }))
         += (makeModeButton(R.drawable.ic_bulb_mode , isBulbSession , { (camera, surface) => camera.openBulbSession(surface) }))
-        += (makeModeButton(R.drawable.ic_video_mode, isVideoSession, { (camera, surface) => videoConfiguration() foreach { vc => camera.openVideoSession(surface, vc) } }))
+        += (makeModeButton(R.drawable.ic_video_mode, isVideoSession, { (camera, surface) => videoConfiguration() foreach { vc => camera.openVideoSession(surface, vc, orientationVar()) } }))
       }
 
       val bottomBar = new SLinearLayout {
