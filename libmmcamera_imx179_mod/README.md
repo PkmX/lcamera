@@ -6,7 +6,7 @@ This utility program patches the `libmmcamera_imx179.so` library from the MRA58K
 
 You need clang >=3.5 (or other C++ compilers that support C++1z), boost >= 1.58.0 installed. Clone the `endian` submodule and issue:
 
-    $ make CPPFLAGS=-I${path_to_boost_endian}/include
+    $ make
 
 ## Usage
 
