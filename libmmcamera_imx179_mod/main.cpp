@@ -11,8 +11,9 @@
 namespace po = boost::program_options;
 using namespace boost::endian;
 
-constexpr auto wh32_offset = 0x2324;
-constexpr auto conf_offset = 0x2414;
+// For Android 6.0 MRA58K
+constexpr auto wh32_offset = 0x431C;
+constexpr auto conf_offset = 0x4404;
 
 // A struct containing various settings for camera hardware. There are
 // actually two entries at `conf_offset`, however, only the first one is used.
@@ -46,7 +47,7 @@ std::ostream& operator<<(std::ostream& out, const configuration& conf)
     out << "sensor_timing=" << conf.sensor_timing << ' ';
     out << "output_timing=" << conf.output_timing << ' ';
     out << "fps=" << conf.fps;
-    
+
     return out;
 }
 
@@ -71,7 +72,7 @@ auto main(const int argc, const char * const * const argv) -> int
         desc.add_options()("output-file,o", po::value<std::string>());
         return desc;
     }();
-    
+
     const po::positional_options_description pdesc = [] {
         po::positional_options_description pdesc;
         pdesc.add("input-file", 1);
@@ -105,7 +106,7 @@ auto main(const int argc, const char * const * const argv) -> int
     }();
 
     std::cerr << input_filename << ": " << conf << std::endl;
-    
+
     if (vm.count("output-file")) {
         const configuration new_conf = [&] {
             configuration new_conf = conf;
@@ -137,7 +138,7 @@ auto main(const int argc, const char * const * const argv) -> int
         output_file.seekp(conf_offset);
         output_file.write(reinterpret_cast<const std::fstream::char_type*>(&new_conf), sizeof(new_conf));
 
-        std::cerr << output_filename << ": " << conf << std::endl;
+        std::cerr << output_filename << ": " << new_conf << std::endl;
     }
 
     return 0;

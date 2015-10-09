@@ -1,0 +1,3 @@
+[submodule "libmmcamera_imx179_mod/endian"]
+	path = libmmcamera_imx179_mod/endian
+	url = https://github.com/boostorg/endian.git
