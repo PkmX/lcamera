@@ -92,7 +92,7 @@ For details about the library modification and a utility to patch your own, see 
 ## FAQ
 
 ### Does it run on Nexus 4/7/10 or other phones that have received Lollipop update?
-It seems that none of those devices fully support the new API as of now (2014/11/17). If you want to verify, run `adb shell dumpsys media.server` with your device connected and developer mode enabled. You should see a dump of your device cameras' capabilities like [this](https://gist.github.com/PkmX/fefff90bab3b6eb2847f). Your camera's `android.request.availableCapabilities` must include `MANUAL_SENSOR`, `MANUAL_POST_PROCESSING` and `RAW` for L Camera to work.
+It seems that none of those devices fully support the new API as of now (2014/11/17). If you want to verify, run `adb shell dumpsys media.camera` with your device connected and developer mode enabled. You should see a dump of your device cameras' capabilities like [this](https://gist.github.com/PkmX/fefff90bab3b6eb2847f). Your camera's `android.request.availableCapabilities` must include `MANUAL_SENSOR`, `MANUAL_POST_PROCESSING` and `RAW` for L Camera to work.
 
 ### Why do I get the 'Cannot parse package' error while installing?
 Make sure the downloaded apk is not corrupted, as it seems some browsers download GitHub's webpage instead of the actual apk. You must also have the Lollipop running on your device.
