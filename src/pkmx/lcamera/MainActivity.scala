@@ -1,16 +1,18 @@
 package pkmx.lcamera
 
 import collection.JavaConversions._
-import java.io.{File, FileOutputStream}
+import java.io.{File, FileNotFoundException, FileOutputStream}
 import java.nio.ByteBuffer
 import java.text.DecimalFormat
 import scala.concurrent.{Promise, Channel, ExecutionContext, Future}
 import scala.collection.immutable.Vector
 import scala.language.{existentials, implicitConversions, reflectiveCalls}
 import scala.util.Try
+import scala.util.control.Exception.ignoring
 import scala.util.control.NonFatal
 
 import android.animation._
+import android.app.Activity.{RESULT_CANCELED, RESULT_OK}
 import android.content.{Intent, DialogInterface, Context}
 import android.graphics._
 import android.graphics.drawable.{Drawable, ColorDrawable}
@@ -25,6 +27,7 @@ import android.media.ImageReader.OnImageAvailableListener
 import android.media.MediaScannerConnection.OnScanCompletedListener
 import android.net.Uri
 import android.os._
+import android.provider.MediaStore
 import android.text.format.Time
 import android.view._
 import android.view.animation.{Animation, TranslateAnimation}
@@ -676,6 +679,10 @@ class MainActivity extends SActivity with Observable {
     implicit val cameraManager = getSystemService(Context.CAMERA_SERVICE).asInstanceOf[CameraManager]
     val lcamera = NoneVar[LCamera]
 
+    val intent = getIntent
+    val action = intent.getAction
+    val isImageCaptureActivity = action == MediaStore.ACTION_IMAGE_CAPTURE
+
     val saveDng = Var(true)
     val minBursts = 2
     val maxBursts = 20
@@ -821,12 +828,19 @@ class MainActivity extends SActivity with Observable {
           case Some(ps: camera.PhotoSession) =>
             val time = new Time
             time.setToNow()
-            val filePathBase = Utils.createPathIfNotExist(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + "/Camera/") + time.format("IMG_%Y%m%d_%H%M%S")
             val orientation = orientationVar()
-
             ps.capture(focus(), exposure(), orientation, { (result, jpegImage, rawImage) => {
-              saveJpegFile(s"$filePathBase.jpg", jpegImage)
-              if (saveDng()) { saveDngFile(s"$filePathBase.dng", camera.characteristics, result, rawImage, orientation) }
+              if (isImageCaptureActivity) {
+                val saveUri: Option[Uri] = Option(intent.getExtras.getParcelable[Uri](MediaStore.EXTRA_OUTPUT))
+                handleCaptureIntent(saveUri, jpegImage)
+              } else {
+                val filePathBase = Utils.createPathIfNotExist(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + "/Camera/") + time.format("IMG_%Y%m%d_%H%M%S")
+
+                saveJpegFile(s"$filePathBase.jpg", jpegImage)
+                if (saveDng()) {
+                  saveDngFile(s"$filePathBase.dng", camera.characteristics, result, rawImage, orientation)
+                }
+              }
             }})
           case Some(bs: camera.BurstSession) =>
             val time = new Time
@@ -1286,6 +1300,28 @@ class MainActivity extends SActivity with Observable {
     new FileOutputStream(filePath).write(bytes)
     mediaScan(filePath, ACTION_NEW_PICTURE)
     debug(s"JPEG saved: $filePath")
+  }
+
+  def handleCaptureIntent(uriOpt: Option[Uri], image: Image): Unit = {
+    val imageBuffer = image.getPlanes()(0).getBuffer
+    val bytes = new Array[Byte](imageBuffer.capacity)
+    imageBuffer.get(bytes)
+
+    uriOpt match {
+      case Some(saveUri) =>
+        ignoring(classOf[FileNotFoundException]) {
+          val outputStream = contentResolver.openOutputStream(saveUri)
+          outputStream.write(bytes)
+          outputStream.close()
+          setResult(RESULT_OK)
+          finish()
+          outputStream.close()
+        }
+      case None =>
+        // TODO: Resized bitmap for "inline-data" intent
+        setResult(RESULT_CANCELED, new Intent())
+        finish()
+    }
   }
 
   def saveYuvAsJpeg(filePath: String, image: Image): Unit = {

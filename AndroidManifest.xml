@@ -9,15 +9,22 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 
+    <uses-feature android:name="android.hardware.camera2" android:required="true"/>
+
     <application android:label="L Camera"
                  android:icon="@drawable/ic_launcher"
                  android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen"
                  android:allowBackup="true">
         <activity android:name=".MainActivity"
-                  android:screenOrientation="portrait">
+                  android:screenOrientation="portrait"
+                  android:clearTaskOnLaunch="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <intent-filter android:icon="@drawable/ic_launcher">
+                <action android:name="android.media.action.IMAGE_CAPTURE"/>
+                <category android:name="android.intent.category.DEFAULT"/>
             </intent-filter>
         </activity>
     </application>
