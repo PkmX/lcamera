@@ -1,11 +1,9 @@
 import android.Keys._
 import android.Dependencies.aar
 
-android.Plugin.androidBuild
-
 name := "lcamera"
 
-scalaVersion := "2.11.5"
+scalaVersion := "2.11.8"
 
 resolvers += "Akka Snapshot Repository" at "http://repo.akka.io/snapshots/"
 
@@ -20,9 +18,9 @@ libraryDependencies ++= Seq(
 platformTarget in Android := "android-21"
 
 proguardCache in Android ++=
-  Seq ( ProguardCache("org.scaloid") % "org.scaloid" %% "scaloid"
-      , ProguardCache("rx") % "com.scalarx" %% "scalarx"
-      , ProguardCache("akka") % "com.typesafe.akka" %% "akka-actor"
+  Seq ( "org.scaloid.scaloid"
+      , "com.scalarx.scalarx"
+      , "com.typesafe.akka.akka-actor"
       )
 
 proguardOptions in Android ++=
@@ -33,10 +31,12 @@ proguardOptions in Android ++=
       , "-dontwarn sun.misc.Unsafe"
       )
 
-scalacOptions in Compile ++= Seq("-feature", "-deprecation", "-Xlint", "-Xfuture", "-Ywarn-dead-code", "-Ywarn-unused")
+scalacOptions ++= Seq("-target:jvm-1.7", "-feature", "-deprecation", "-Xlint", "-Xfuture", "-Ywarn-dead-code", "-Ywarn-unused")
+
+javacOptions ++= Seq("-source", "1.7")
 
 run <<= run in Android
 
 install <<= install in Android
 
-Keys.`package` <<= `packageT` in Android
+//Keys.`package` <<= `packageT` in Android

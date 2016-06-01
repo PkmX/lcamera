@@ -2,7 +2,7 @@
 
 ![Screenshot](screenshot.jpg?raw=true)
 
-**L Camera** is an open-source experimental camera app for Android L devices using the new `android.hardware.camera2` API. Currently, the only supported device is Nexus 5 and Nexus 6 running Android 5.0 Lollipop.
+**L Camera** is an open-source experimental camera app for Android L (and newer) devices using the new `android.hardware.camera2` API. Currently, supported devices include Nexus 5, 6, 5X and 6P running Android 5.0 Lollipop and 6.0 Marshmallow.
 
 *Please note that this app is intended to test and study new features of the camera API, it is not for general uses as it lacks many basic camera features (location tagging, white balance, photo review, flash control, etc).*
 
@@ -116,15 +116,17 @@ The app is written in the [Scala](http://www.scala-lang.org/) programming langua
 
 ### How to build
 
-You must have both **scala 2.11.5** and **sbt >= 0.13** installed.
+You must have both **scala 2.11.8** and **sbt >= 0.13** installed.
+Also, you must ensure that sbt runs with JDK 7, not 8.
+For example, `sbt -java-home `/usr/libexec/java_home -v 1.7` on OS X.
 
 To build the app (the resulting APK will be placed in the `bin/` directory):
 
-    $ sbt package
+    $ sbt android:package
 
 To build and run the app on device (assuming you have `adb` and developer mode enabled):
 
-    $ sbt run
+    $ sbt android:run
 
 ### Debugging
 
