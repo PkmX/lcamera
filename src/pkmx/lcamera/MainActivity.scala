@@ -117,7 +117,7 @@ object Utils {
     setVideoSize(vc.width, vc.height)
     setVideoEncodingBitRate(vc.bitrate)
     setVideoFrameRate(vc.fps)
-    setOrientationHint(orientationToDegree(orientation))
+    setOrientationHint(orientation)
     setOutputFile(tmpFilePath)
     setVideoEncoder(2) // H264
     setAudioEncoder(3) // AAC
@@ -129,14 +129,6 @@ object Utils {
   }
 
   def renameFile(src: String, dst: String): Unit = { new File(src).renameTo(new File(dst)) }
-
-  def orientationToDegree(orientation: Int) = orientation match {
-    case Surface.ROTATION_0 => 90
-    case Surface.ROTATION_90 => 0
-    case Surface.ROTATION_180 => 270
-    case Surface.ROTATION_270 => 180
-    case _ => 0
-  }
 
   def createPathIfNotExist(path: String): String = {
     val file = new File(path)
@@ -436,7 +428,7 @@ class LCamera (private[this] val camera: CameraDevice) (implicit cameraManager: 
         setupRequest(request, focus, exposure)
         request.set_(LENS_OPTICAL_STABILIZATION_MODE, LENS_OPTICAL_STABILIZATION_MODE_ON)
         request.set_(JPEG_QUALITY, 100.toByte)
-        request.set_(JPEG_ORIENTATION, orientationToDegree(orientation))
+        request.set_(JPEG_ORIENTATION, orientation)
         request.set_(STATISTICS_LENS_SHADING_MAP_MODE, STATISTICS_LENS_SHADING_MAP_MODE_ON) // Required for RAW capture
         List(previewSurface, jpegSurface, rawSurface) foreach request.addTarget
 
@@ -727,7 +719,17 @@ class MainActivity extends SActivity with Observable {
     val userVideoConfiguration = Var(videoConfigurations(0))
     val videoConfiguration = Rx { availableVideoConfigurations() find { _ == userVideoConfiguration() } orElse availableVideoConfigurations().lift(0) }
 
-    val orientationVar = Var(windowManager.getDefaultDisplay.getRotation)
+    def orientationToDegree(orientation: Int) = orientation match {
+      case Surface.ROTATION_0 => 0
+      case Surface.ROTATION_90 => 90
+      case Surface.ROTATION_180 => 180
+      case Surface.ROTATION_270 => 270
+      case _ => 0
+    }
+
+    val screenOrientationVar = Var(windowManager.getDefaultDisplay.getRotation)
+    val cameraOrientationVar: Rx[Integer] = Rx { lcamera().map(_.characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION)).getOrElse(0) }
+    val orientationVar: Rx[Integer] = Rx { (cameraOrientationVar() - orientationToDegree(screenOrientationVar()) + 360) % 360 }
 
     val orientationEventListener = new OrientationEventListener(this) {
       override def onOrientationChanged(deg: Int) = {
@@ -739,8 +741,8 @@ class MainActivity extends SActivity with Observable {
           else Surface.ROTATION_0
 
         debug(newOrientation.toString)
-        if (orientationVar() != newOrientation) {
-          orientationVar() = newOrientation // FIXME: Re-create video session
+        if (screenOrientationVar() != newOrientation) {
+          screenOrientationVar() = newOrientation // FIXME: Re-create video session
         }
       }
     }
